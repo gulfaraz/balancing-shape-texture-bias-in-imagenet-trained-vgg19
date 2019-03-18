@@ -2,6 +2,7 @@ import torch
 import torchvision
 import torchvision.models as models
 from instancenormbatchswap import InstanceNormBatchSwap
+from utils import init_weights
 
 
 def create_miniimagenet_classifier():

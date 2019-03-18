@@ -124,48 +124,51 @@ supported_models = {
     'resnet50_tune_fc': create_resnet50_tune_fc
 }
 
-sanity(supported_models, original_train_loader, config.device)
+models = {k:v for (k,v) in supported_models.items() if k in (config.model if config.model is not None else supported_models)}
 
+sanity(models, original_train_loader, config.device)
 
-similarity_weight = 0.04
-
-# setup log directory
-log_directory = pathJoin('run_logs')
-os.makedirs(log_directory, exist_ok=True)
 
 # models directory
 model_directory = pathJoin(config.rootPath, 'models')
 
-for model_type in supported_models:
+if config.train:
 
-    # original
-    run_name = '{}'.format(model_type)
-    logger = create_logger(log_directory, run_name)
-    logger.info('Run Name {}'.format(run_name))
-    model = supported_models[model_type]()
-    run(
-        run_name, model,
-        model_directory,
-        config.numberOfEpochs,
-        logger,
-        original_train_loader,
-        original_val_loader, config.device,
-        similarity_weight=similarity_weight if 'similarity' in model_type else None,
-        load_data=load_data
-    )
+    similarity_weight = 0.04
 
-    # # stylized
-    # run_name = 'stylized_{}'.format(model_type)
-    # logger = create_logger(log_directory, run_name)
-    # logger.info('Run Name {}'.format(run_name))
-    # model = supported_models[model_type]()
-    # run(run_name, model, training, epochs, monitor, logger, stylized_train_loader, stylized_val_loader)
+    # setup log directory
+    log_directory = pathJoin('run_logs')
+    os.makedirs(log_directory, exist_ok=True)
 
-    del model
-    torch.cuda.empty_cache()
+    for model_name in models:
+
+        # original
+        logger = create_logger(log_directory, model_name)
+        logger.info('Model Name {}'.format(model_name))
+        model = models[model_name]()
+        run(
+            model_name, model,
+            model_directory,
+            config.numberOfEpochs,
+            logger,
+            original_train_loader,
+            original_val_loader, config.device,
+            similarity_weight=similarity_weight if 'similarity' in model_name else None,
+            load_data=load_data
+        )
+
+        # # stylized
+        # model_name = 'stylized_{}'.format(model_name)
+        # logger = create_logger(log_directory, model_name)
+        # logger.info('Run Name {}'.format(model_name))
+        # model = models[model_name]()
+        # run(model_name, model, training, epochs, monitor, logger, stylized_train_loader, stylized_val_loader)
+
+        del model
+        torch.cuda.empty_cache()
 
 
 # Check Performance
 
-perf(supported_models, model_directory, dataset_names, config.device, load_data=load_data)
+perf(models, model_directory, dataset_names, config.device, load_data=load_data)
 

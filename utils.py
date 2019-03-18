@@ -63,8 +63,12 @@ def configuration():
     parser.add_argument('--batchSize', type=int, default=32,
                         help='batch size for training')
 
-    parser.add_argument('--train', action='store_false', default=True,
+    parser.add_argument('--train', action='store_true', default=False,
                         help='train the models')
+
+    parser.add_argument('--model', action='append', type=str,
+                        default=None,
+                        help='name of model(s)')
 
     args = parser.parse_args()
 
@@ -84,3 +88,4 @@ def configuration():
         arg_vars['device'] = torch.device('cpu')
 
     return args
+

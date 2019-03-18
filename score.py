@@ -1,3 +1,4 @@
+import datetime
 import torch
 from tqdm import tqdm
 
@@ -38,7 +39,7 @@ def score_model(model, dataloader, device, similarity_model=False):
     return total_top1/total_, total_top5/total_
 
 
-def evaluate_model(model, load_data, dataset_names, print_function, similarity_model, device):
+def evaluate_model(model_name, model, load_data, dataset_names, print_function, similarity_model, device):
     scores = {
         'top5': [],
         'top1': []
@@ -52,5 +53,12 @@ def evaluate_model(model, load_data, dataset_names, print_function, similarity_m
         scores['top1'].append(top1)
 
     for metric in scores:
-        print('{} => {}'.format(metric, ', '.join([ '{:.4f}'.format(x) for x in scores[metric] ])))
+        logfile = open('{}.log'.format(metric), 'a')
+        formatted_scores = [ '{:.4f}'.format(x) for x in scores[metric] ]
+        formatted_scores.insert(0, model_name) # append model name
+        formatted_scores.insert(0, datetime.datetime.now()) # append date
+        line = ', '.join(formatted_scores)
+        logfile.write(line)
+        logfile.close()
+        print('{} ({}) => {}'.format(model_name, metric, ', '.join([ '{:.4f}'.format(x) for x in scores[metric] ])))
 

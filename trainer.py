@@ -142,7 +142,7 @@ def train(model, dataloader, criterion, optimizer, logger, device, similarity_we
     return top1_score, top5_score, mean_loss
 
 
-def run(run_name, model, model_directory, number_of_epochs, logger, train_loader, val_loader, device, similarity_weight=None, dataset_names=['miniimagenet', 'stylized-miniimagenet-1.0'], load_data=None):
+def run(model_name, model, model_directory, number_of_epochs, logger, train_loader, val_loader, device, similarity_weight=None, dataset_names=['miniimagenet', 'stylized-miniimagenet-1.0'], load_data=None):
 
     criterion = torch.nn.CrossEntropyLoss()
 #     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
@@ -175,23 +175,23 @@ def run(run_name, model, model_directory, number_of_epochs, logger, train_loader
                 'weights': model.state_dict(),
                 'optimizer_weights': optimizer.state_dict()
             }
-            torch.save(checkpoint, pathJoin(model_directory, '{}.ckpt'.format(run_name)))
+            torch.save(checkpoint, pathJoin(model_directory, '{}.ckpt'.format(model_name)))
             best_validation_accuracy = validation_top5_accuracy
 
     logger.info('Epoch {}'.format(checkpoint['epoch']))
 
-    evaluate_model(model, load_data, dataset_names, logger.info, similarity_weight is not None, device)
+    evaluate_model(model_name, model, load_data, dataset_names, logger.info, similarity_weight is not None, device)
 
     logger.info('Train: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(checkpoint['train_loss'], checkpoint['train_top1_accuracy'], checkpoint['train_top5_accuracy']))
     logger.info('Validation: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(checkpoint['validation_loss'], checkpoint['validation_top1_accuracy'], checkpoint['validation_top5_accuracy']))
 
 
 def perf(model_list, model_directory, dataset_names, device, load_data=None):
-    for model_type in model_list:
-        print(model_type)
-        model = model_list[model_type]()
+    for model_name in model_list:
+        print(model_name)
+        model = model_list[model_name]()
 
-        checkpoint_path = pathJoin(model_directory, '{}.ckpt'.format(model_type))
+        checkpoint_path = pathJoin(model_directory, '{}.ckpt'.format(model_name))
         print(checkpoint_path)
         
         if os.path.isfile(checkpoint_path):
@@ -210,11 +210,11 @@ def perf(model_list, model_directory, dataset_names, device, load_data=None):
 
             print('Epoch: {}'.format(epoch))
 
-            evaluate_model(model, load_data, dataset_names, print, 'similarity' in model_type, device)
+            evaluate_model(model_name, model, load_data, dataset_names, print, 'similarity' in model_name, device)
             print('Train: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(train_loss, train_top1_accuracy, train_top5_accuracy))
             print('Validation: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(validation_loss, validation_top1_accuracy, validation_top5_accuracy))
         else:
-            print('Checkpoint not available for model {}'.format(model_type))
+            print('Checkpoint not available for model {}'.format(model_name))
         del model
         torch.cuda.empty_cache()
 
