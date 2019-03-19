@@ -2,6 +2,7 @@ import datetime
 import torch
 from tqdm import tqdm
 
+
 def score(prediction, target):
     total = prediction.size(0)
     prediction = prediction.t()
@@ -56,9 +57,9 @@ def evaluate_model(model_name, model, load_data, dataset_names, print_function, 
         logfile = open('{}.log'.format(metric), 'a')
         formatted_scores = [ '{:.4f}'.format(x) for x in scores[metric] ]
         formatted_scores.insert(0, model_name) # append model name
-        formatted_scores.insert(0, datetime.datetime.now()) # append date
+        formatted_scores.insert(0, str(datetime.datetime.now())) # append date
         line = ', '.join(formatted_scores)
-        logfile.write(line)
+        logfile.write(line + '\n')
         logfile.close()
         print('{} ({}) => {}'.format(model_name, metric, ', '.join([ '{:.4f}'.format(x) for x in scores[metric] ])))
 
