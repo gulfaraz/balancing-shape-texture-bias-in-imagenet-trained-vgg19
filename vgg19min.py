@@ -188,7 +188,7 @@ def create_vgg19_vanilla_scratch():
     return vgg19
 
 
-def create_vgg19_vanilla_tune_all():
+def create_vgg19_vanilla_tune_fc():
     # load model from pytorch
     vgg19 = models.vgg19(pretrained=True)
 
