@@ -170,5 +170,5 @@ if config.train:
 
 # Check Performance
 
-perf(models, model_directory, dataset_names, config.device, load_data=load_data)
+perf(models, model_directory, dataset_names, config.device, load_data=load_data, only_exists=config.exists)
 

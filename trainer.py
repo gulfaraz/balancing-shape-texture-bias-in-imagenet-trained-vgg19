@@ -186,7 +186,7 @@ def run(model_name, model, model_directory, number_of_epochs, logger, train_load
     logger.info('Validation: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(checkpoint['validation_loss'], checkpoint['validation_top1_accuracy'], checkpoint['validation_top5_accuracy']))
 
 
-def perf(model_list, model_directory, dataset_names, device, load_data=None):
+def perf(model_list, model_directory, dataset_names, device, load_data=None, only_exists=None):
     for model_name in model_list:
         print(model_name)
         model = model_list[model_name]()
@@ -210,7 +210,8 @@ def perf(model_list, model_directory, dataset_names, device, load_data=None):
 
             print('Epoch: {}'.format(epoch))
 
-            evaluate_model(model_name, model, load_data, dataset_names, print, 'similarity' in model_name, device)
+            if not only_exists:
+                evaluate_model(model_name, model, load_data, dataset_names, print, 'similarity' in model_name, device)
             print('Train: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(train_loss, train_top1_accuracy, train_top5_accuracy))
             print('Validation: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(validation_loss, validation_top1_accuracy, validation_top5_accuracy))
         else:
