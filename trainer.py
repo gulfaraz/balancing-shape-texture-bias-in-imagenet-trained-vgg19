@@ -195,26 +195,15 @@ def perf(model_list, model_directory, dataset_names, device, load_data=None):
         print(checkpoint_path)
         
         if os.path.isfile(checkpoint_path):
-            checkpoint = torch.load(checkpoint_path)
+            checkpoint = torch.load(checkpoint_path, map_location=device)
 
             epoch = checkpoint['epoch']
-            if 'train_top1_accuracy' in checkpoint:
-                train_top1_accuracy = checkpoint['train_top1_accuracy']
-                train_top5_accuracy = checkpoint['train_top5_accuracy']
-            else:
-                train_top1_accuracy = checkpoint['train_accuracy']
-                train_top5_accuracy = checkpoint['train_accuracy']
+            train_top1_accuracy = checkpoint['train_top1_accuracy']
+            train_top5_accuracy = checkpoint['train_top5_accuracy']
             train_loss = checkpoint['train_loss']
-
-            if 'validation_top1_accuracy' in checkpoint:
-                validation_top1_accuracy = checkpoint['validation_top1_accuracy']
-                validation_top5_accuracy = checkpoint['validation_top5_accuracy']
-            else:
-                validation_top1_accuracy = checkpoint['validation_accuracy']
-                validation_top5_accuracy = checkpoint['validation_accuracy']
-            validation_loss = 0.0
-            if 'validation_loss' in checkpoint:
-                validation_loss = checkpoint['validation_loss']
+            validation_top1_accuracy = checkpoint['validation_top1_accuracy']
+            validation_top5_accuracy = checkpoint['validation_top5_accuracy']
+            validation_loss = checkpoint['validation_loss']
             model.load_state_dict(checkpoint['weights'])
 
             model.eval()

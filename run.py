@@ -102,24 +102,23 @@ dataset_names = [
 
 
 supported_models = {
-    'vgg19_vanilla_scratch': create_vgg19_vanilla_scratch, # 'vgg19_scratch_min': create_vgg19_scratch,
-    'vgg19_vanilla_tune_fc': create_vgg19_vanilla_tune_fc, # 'vgg19_pretrained_in_tuned_min': create_vgg19_pretrained,
-    'vgg19_bn_all_tune_fc': create_vgg19_bn_all_tune_fc, # 'vgg19_bn_pretrained_in_tuned_min': create_vgg19_bn_tune_fc,
+    'vgg19_vanilla_tune_fc': create_vgg19_vanilla_tune_fc,
+    'vgg19_bn_all_tune_fc': create_vgg19_bn_all_tune_fc,
     'vgg19_bn_all_tune_all': create_vgg19_bn_all_tune_all,
     'vgg19_in_single_tune_after': create_vgg19_in_single_tune_after,
-    'vgg19_in_single_tune_all': create_vgg19_in_single_tune_all, # 'vgg19_in_pretrained_in_tuned_min': create_vgg19_in_pretrained, # 'vgg19_in_single_tune_all': create_vgg19_in_single_tune_all,
+    'vgg19_in_single_tune_all': create_vgg19_in_single_tune_all,
     'vgg19_in_affine_single_tune_all': create_vgg19_in_affine_single_tune_all,
-    'vgg19_in_all_tune_all': create_vgg19_in_all_tune_all, # 'vgg19_in_all_tune_all': create_vgg19_in_all_tune_all,
-    'vgg19_in_bs_single_tune_after': create_vgg19_in_bs_single_tune_after, # 'vgg19_in_batch_stats_pretrained_in_tuned_min': create_vgg19_in_pretrained, # create_vgg19_in_batch_stats_pretrained / create_vgg19_in_bs_eval / create_vgg19_in_pretrained
+    'vgg19_in_all_tune_all': create_vgg19_in_all_tune_all,
+    'vgg19_in_bs_single_tune_after': create_vgg19_in_bs_single_tune_after,
     'vgg19_in_bs_single_tune_after_eval': create_vgg19_in_bs_eval,
-    'vgg19_in_bs_single_tune_all': create_vgg19_in_bs_single_tune_all, # 'vgg19_in_bs_single_tune_all': create_vgg19_in_bs_single_tune_all,
+    'vgg19_in_bs_single_tune_all': create_vgg19_in_bs_single_tune_all,
     'vgg19_in_bs_single_tune_all_eval': create_vgg19_in_bs_eval,
-    'vgg19_in_bs_all_tune_all': create_vgg19_in_bs_all_tune_all, # 'vgg19_in_bs_all_tune_all': create_vgg19_in_bs_all_tune_all
+    'vgg19_in_bs_all_tune_all': create_vgg19_in_bs_all_tune_all,
     'vgg19_bn_single_in_tune_all': create_vgg19_bn_single_in_tune_all,
-    'vgg19_vanilla_similarity_tune_all': create_vgg19_vanilla_similarity_tune_all, # 'vgg19_vanilla_similarity_0.04_tune_all': create_vgg19_vanilla_similarity_tune_all,
-    'vgg19_in_single_similarity_tune_all': create_vgg19_in_single_similarity_tune_all, # 'vgg19_in_single_similarity_0.04_tune_all': create_vgg19_in_single_similarity_tune_all,
-    'vgg19_bn_all_similarity_tune_fc': create_vgg19_bn_all_similarity_tune_fc, # 'vgg19_bn_all_similarity_tune_fc': create_vgg19_bn_all_similarity_tune_fc,
-    'vgg19_bn_all_similarity_tune_all': create_vgg19_bn_all_similarity_tune_all, # 'vgg19_bn_all_similarity_tune_all': create_vgg19_bn_all_similarity_tune_all,
+    'vgg19_vanilla_similarity_tune_all': create_vgg19_vanilla_similarity_tune_all,
+    'vgg19_in_single_similarity_tune_all': create_vgg19_in_single_similarity_tune_all,
+    'vgg19_bn_all_similarity_tune_fc': create_vgg19_bn_all_similarity_tune_fc,
+    'vgg19_bn_all_similarity_tune_all': create_vgg19_bn_all_similarity_tune_all,
     # 'vgg19_cosine_tune_all_no_similarity': create_vgg19_cosine_tune_all
     # 'vgg19_custom_cosine_similarity_weight_0.04_tune_all_grad_clip_50_pos_loss': create_vgg19_cosine_tune_all
     'resnet50_tune_fc': create_resnet50_tune_fc
