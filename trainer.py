@@ -147,8 +147,8 @@ def run(model_name, model, model_directory, number_of_epochs, learning_rate, log
     logger.info('Batch Size {}'.format(train_loader.batch_size))
     logger.info('Number of Workers {}'.format(train_loader.num_workers))
     logger.info('Optimizer {}'.format('SGD w/ Momentum'))
-    logger.info('Learning Rate {:.4f}'.format(learning_rate))
-    logger.info('Similarity Weight {:.4f}'.format(similarity_weight))
+    logger.info('Learning Rate {}'.format(learning_rate))
+    logger.info('Similarity Weight {}'.format(similarity_weight))
     logger.info('Device {}'.format(device))
 
     criterion = torch.nn.CrossEntropyLoss()
