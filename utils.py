@@ -62,6 +62,8 @@ def configuration():
                         help='number of epochs for training')
     parser.add_argument('--batchSize', type=int, default=32,
                         help='batch size for training')
+    parser.add_argument('--learningRate', type=float, default=0.0001,
+                        help='learning rate for training')
 
     parser.add_argument('--train', action='store_true', default=False,
                         help='train the models')

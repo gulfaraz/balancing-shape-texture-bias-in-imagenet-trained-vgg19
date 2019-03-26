@@ -357,7 +357,7 @@ def create_vgg19_in_bs_all_tune_all():
 
 # BN + IN
 
-def create_vgg19_bn_single_in_tune_all_root(instance_normalization_function=None):
+def create_vgg19_bn_in_single_tune_all_root(instance_normalization_function=None):
     vgg19_in = torchvision.models.vgg19_bn(pretrained=False)
     vgg19 = torchvision.models.vgg19(pretrained=True)
     replace_layers = [28]
@@ -388,8 +388,8 @@ def create_vgg19_bn_single_in_tune_all_root(instance_normalization_function=None
     return vgg19_in
 
 
-def create_vgg19_bn_single_in_tune_all():
-    return create_vgg19_in_all_tune_all_root(instance_normalization_function=torch.nn.InstanceNorm2d)
+def create_vgg19_bn_in_single_tune_all():
+    return create_vgg19_bn_in_single_tune_all_root(instance_normalization_function=torch.nn.InstanceNorm2d)
 
 
 # Cosine Similarity Models
