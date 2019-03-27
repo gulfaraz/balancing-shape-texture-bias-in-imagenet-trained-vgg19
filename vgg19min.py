@@ -1,7 +1,7 @@
 import torch
 import torchvision
 import torchvision.models as models
-from instancenormbatchswap import InstanceNormBatchSwap
+from instancenormbatchswap import InstanceNormBatchSwap, InstanceNormSimilarity
 from utils import init_weights
 
 
@@ -18,12 +18,15 @@ def create_miniimagenet_classifier():
 
 
 class VGG_IN(torch.nn.Module):
-    def __init__(self, layer_index, instance_normalization_function=None, affine=False, pretrained=False):
+    def __init__(self, layer_index, instance_normalization_function=None, affine=False, pretrained=False, filename=None):
         super(VGG_IN, self).__init__()
         vgg19 = models.vgg19(pretrained=pretrained)
         self.features1 = vgg19.features[:layer_index]
         if instance_normalization_function is not None:
-            self.instance_normalization = instance_normalization_function(vgg19.features[layer_index].out_channels, affine=affine)
+            if filename:
+                self.instance_normalization = instance_normalization_function(vgg19.features[layer_index].out_channels, affine=affine, filename=filename)
+            else:
+                self.instance_normalization = instance_normalization_function(vgg19.features[layer_index].out_channels, affine=affine)
         self.features2 = vgg19.features[layer_index:]
         self.classifier = create_miniimagenet_classifier()
 
@@ -439,6 +442,16 @@ def create_vgg19_bn_all_similarity_tune_all():
     # train fc layers
     for param in vgg19.classifier.parameters():
         param.requires_grad = True
+
+    return vgg19
+
+
+def create_vgg19_in_bs_single_similarity(filename):
+    vgg19 = VGG_IN(21, instance_normalization_function=InstanceNormSimilarity, pretrained=True, filename=filename)
+
+    # train all layers
+    for param in vgg19.parameters():
+        param.requires_grad = False
 
     return vgg19
 
