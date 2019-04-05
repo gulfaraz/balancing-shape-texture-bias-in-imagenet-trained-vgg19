@@ -1,4 +1,4 @@
-csv/
+csv/*.csv
 Stylized-ImageNet/
 run_logs
 models
