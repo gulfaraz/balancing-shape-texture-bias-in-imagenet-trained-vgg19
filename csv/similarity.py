@@ -42,12 +42,12 @@ loader_types = [ 'val', 'train' ]
 loader_string_format = '{}_{}_loader'
 
 for loader_type in loader_types:
-    print(loader_type)
+    # print(loader_type)
     i = 1
-    plt.figure(figsize=(20, 4))
+    plt.figure(figsize=(20, 8))
     loader_type_stats = pd.DataFrame()
     for checkpoint_map in checkpoint_maps:
-        print(checkpoint_map)
+        # print(checkpoint_map)
         original_loader = loader_string_format.format('original', loader_type)
         stylized_loader = loader_string_format.format('stylized', loader_type)
         original_stats = stats[(stats.model == checkpoint_map) & (stats['dataset-split'] == original_loader)][list(map(str, activation_labels))].transpose()
@@ -65,10 +65,14 @@ for loader_type in loader_types:
         original_row.columns = ['model', 'dataset', 'mean', 'std']
         stylized_row.columns = ['model', 'dataset', 'mean', 'std']
         loader_type_stats = pd.concat([loader_type_stats, original_row, stylized_row])
-        plt.subplot(1, 3, i)
+        plt.subplot(2, 3, i)
         hist = original_mean.plot.hist(bins=10, alpha=0.5)
         hist = stylized_mean.plot.hist(bins=10, alpha=0.5)
-        plt.title('{} {}'.format(loader_type, checkpoint_map))
+        plt.title('{} {} mean'.format(loader_type, checkpoint_map))
+        plt.subplot(2, 3, i+3)
+        hist = original_std.plot.hist(bins=10, alpha=0.5)
+        hist = stylized_std.plot.hist(bins=10, alpha=0.5)
+        plt.title('{} {} std'.format(loader_type, checkpoint_map))
         i+=1
     plt.savefig('{}-similarity-plots.png'.format(loader_type))
     loader_type_stats.to_csv('{}-similarity-summary.csv'.format(loader_type), float_format='%.f')
