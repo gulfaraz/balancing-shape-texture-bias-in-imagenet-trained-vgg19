@@ -1,5 +1,6 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+from scipy import stats as scipystat
 
 similarity_filename = 'similarity.csv'
 checkpoint_maps = [ 'imagenet', 'miniimagenet_with_in', 'stylized_miniimagenet_with_in' ]
@@ -46,6 +47,12 @@ for loader_type in loader_types:
     i = 1
     plt.figure(figsize=(20, 8))
     loader_type_stats = pd.DataFrame()
+    in_original_mean = None
+    in_original_std = None
+    min_original_mean = None
+    min_original_std = None
+    smin_original_mean = None
+    smin_original_std = None
     for checkpoint_map in checkpoint_maps:
         # print(checkpoint_map)
         original_loader = loader_string_format.format('original', loader_type)
@@ -65,6 +72,15 @@ for loader_type in loader_types:
         original_row.columns = ['model', 'dataset', 'mean', 'std']
         stylized_row.columns = ['model', 'dataset', 'mean', 'std']
         loader_type_stats = pd.concat([loader_type_stats, original_row, stylized_row])
+        if checkpoint_map == 'imagenet':
+            in_original_mean = original_mean
+            in_original_std = original_std
+        elif checkpoint_map == 'miniimagenet_with_in':
+            min_original_mean = original_mean
+            min_original_std = original_std
+        elif checkpoint_map == 'stylized_miniimagenet_with_in':
+            smin_original_mean = original_mean
+            smin_original_std = original_std
         plt.subplot(2, 3, i)
         hist = original_mean.plot.hist(bins=10, alpha=0.5)
         hist = stylized_mean.plot.hist(bins=10, alpha=0.5)
@@ -74,5 +90,13 @@ for loader_type in loader_types:
         hist = stylized_std.plot.hist(bins=10, alpha=0.5)
         plt.title('{} {} std'.format(loader_type, checkpoint_map))
         i+=1
+    print('imagenet vs miniimagenet - mean')
+    print(scipystat.ttest_ind(in_original_mean, min_original_mean))
+    print('imagenet vs miniimagenet - std')
+    print(scipystat.ttest_ind(in_original_mean, smin_original_mean))
+    print('imagenet vs stylized miniimagenet - mean')
+    print(scipystat.ttest_ind(in_original_std, min_original_std))
+    print('imagenet vs stylized miniimagenet - std')
+    print(scipystat.ttest_ind(in_original_std, smin_original_std))
     plt.savefig('{}-similarity-plots.png'.format(loader_type))
     loader_type_stats.to_csv('{}-similarity-summary.csv'.format(loader_type), float_format='%.f')
