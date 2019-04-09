@@ -1,7 +1,8 @@
 from collections import defaultdict
 from utils import *
 from tqdm import tqdm
-from PIL import Image
+from PIL import Image, ImageFilter
+import torch
 from torch.utils.data import Dataset
 
 class BaseDataset(Dataset):
@@ -193,6 +194,114 @@ class ImageNetDataset(BaseDataset):
 
         return classes
 
+
+class MiniImageNetPairDataset(BaseDataset):
+
+    def __init__(self, input_directory, target_directory, split='train', transforms=None, target_type=None):
+        assert target_type in ['min', 'smin', 'highpass', 'swap', 'mix'], 'Unknown target type ({}) for pair dataset'.format(target_type)
+        self.target_directory = pathJoin(target_directory, split)
+        super().__init__(input_directory, split, transforms)
+        self.target_type = target_type
+        self.descriptions = self.loadDescriptions()
+        self.classes = self.loadClasses()
+        self.groundtruths = self.loadValidationGroundtruths() if split == 'val' else []
+        self.INDEX_IMAGE = 2
+        self.INDEX_TARGET = 3
+        self.INDEX_LABEL = 5
+
+    def loadImage(self, filepath):
+        if not os.path.isfile(filepath):
+            filepath = filepath.replace('.JPEG', '.png')
+        return Image.open(filepath).convert('RGB')
+
+    def loadDatapoint(self, idx):
+        input_filepath = self.datapoints[idx][0]
+        target_filepath = self.datapoints[idx][1]
+        input_image = self.loadImage(input_filepath)
+        if self.target_type == 'min':
+            target_image = input_image
+        elif self.target_type == 'smin':
+            target_image = self.loadImage(target_filepath)
+        elif self.target_type == 'highpass':
+            target_image = input_image.filter(ImageFilter.FIND_EDGES)
+        elif self.target_type == 'swap':
+            target_image = input_image
+            input_image = self.loadImage(target_filepath)
+        elif self.target_type == 'mix':
+            target_image = self.loadImage(target_filepath)
+            if torch.rand(1) > 0.5:
+                input_image, target_image = target_image, input_image
+
+        if self.split == 'val':
+            groundtruth = self.groundtruths[idx]
+        elif self.split == 'train':
+            groundtruth = self.classes.index(input_filepath.split('/').pop().split('_')[0])
+        if self.transforms:
+            input_image = self.transforms(input_image)
+            target_image = self.transforms(target_image)
+        return (input_filepath, target_filepath, input_image, target_image, groundtruth, self.descriptions[groundtruth])
+
+    def loadDataset(self):
+        datapoints = []
+
+        dataset_file_list_filename = '{}.txt'.format(self.split)
+        dataset_file_list_path = os.path.join(self.directory, dataset_file_list_filename)
+
+        with open(dataset_file_list_path, 'r') as dataset_file_list_file:
+            for line in tqdm(dataset_file_list_file, total=sum(1 for line in open(dataset_file_list_path))):
+                file_path = pathJoin(self.directory, self.sanitizeFilename(line))
+                target_file_path = pathJoin(self.target_directory, self.sanitizeFilename(line))
+                datapoints.append([file_path, target_file_path])
+        
+        return datapoints
+    
+    def sanitizeFilename(self, filename):
+        return filename.replace('"', '').strip()
+
+    def loadDescriptions(self):
+        descriptions = []
+
+        descriptions_filename = 'wnids_with_descriptions.txt'
+        descriptions_path = pathJoin(self.directory, '..', descriptions_filename)
+
+        with open(descriptions_path, 'r') as descriptions_file:
+            for line in descriptions_file:
+                description_breakdown = line.split(' ')
+                description_breakdown.pop(0)
+                description = ' '.join(description_breakdown).strip()
+                descriptions.append(description)
+
+        return descriptions
+
+    def loadValidationGroundtruths(self):
+        groundtruths = []
+
+        groundtruths_filename = 'val_groundtruth.txt'
+        groundtruths_path = pathJoin(self.directory, '..', groundtruths_filename)
+
+        with open(groundtruths_path, 'r') as groundtruths_file:
+            for line in groundtruths_file:
+                groundtruth_breakdown = line.split(' ')
+                groundtruth_breakdown.pop(0)
+                groundtruth = ' '.join(groundtruth_breakdown).strip()
+                groundtruths.append(int(groundtruth))
+
+        return groundtruths
+
+    def loadClasses(self):
+        classes = []
+
+        classes_filename = 'wnids.txt'
+        classes_path = pathJoin(self.directory, '..', classes_filename)
+
+        with open(classes_path, 'r') as classes_file:
+            for line in classes_file:
+                classes.append(line.strip())
+
+        return classes
+
+    def idx2label(self, class_idx):
+        return self.classes[class_idx]
 
 class DeNormalize(object):
     # Source: https://discuss.pytorch.org/t/simple-way-to-inverse-transform-normalization/4821/3

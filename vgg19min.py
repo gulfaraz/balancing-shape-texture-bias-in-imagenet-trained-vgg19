@@ -455,3 +455,63 @@ def create_vgg19_in_bs_single_similarity(filename):
 
     return vgg19
 
+
+class VGG_AUTOENCODER(torch.nn.Module):
+    def __init__(self, pretrained=False):
+        super(VGG_AUTOENCODER, self).__init__()
+        vgg19 = models.vgg19(pretrained=pretrained)
+        self.encoder = torch.nn.ModuleList([])
+        self.decoder = torch.nn.ModuleList([])
+        for layer in vgg19.features:
+            self.encoder.append(self.get_encoding_layer(layer))
+            self.decoder.insert(0, self.get_decoding_layer(layer))
+
+    def forward(self, x):
+        indices = []
+        for layer in self.encoder:
+            x = layer(x)
+            if isinstance(layer, torch.nn.MaxPool2d):
+                indices.append(x[1])
+                x = x[0]
+        for layer in self.decoder:
+            if isinstance(layer, torch.nn.MaxUnpool2d):
+                x = layer(x, indices.pop())
+            else:
+                x = layer(x)
+        return x
+
+    def get_encoding_layer(self, layer):
+        if isinstance(layer, torch.nn.MaxPool2d):
+            return torch.nn.MaxPool2d(
+                layer.kernel_size,
+                stride=layer.stride,
+                padding=layer.padding,
+                dilation=layer.dilation,
+                return_indices=True,
+                ceil_mode=layer.ceil_mode
+            )
+        return layer
+
+    def get_decoding_layer(self, layer):
+        if isinstance(layer, torch.nn.Conv2d):
+            return torch.nn.ConvTranspose2d(
+                layer.out_channels,
+                layer.in_channels,
+                layer.kernel_size,
+                stride=layer.stride,
+                padding=layer.padding,
+                dilation=layer.dilation,
+                groups=layer.groups,
+                bias=(layer.bias is not None)
+            )
+        elif isinstance(layer, torch.nn.MaxPool2d):
+            return torch.nn.MaxUnpool2d(
+                layer.kernel_size,
+                stride=layer.stride,
+                padding=layer.padding
+            )
+        return layer
+
+def create_vgg19_autoencoder():
+    autoencoder = VGG_AUTOENCODER(pretrained=False)
+    return autoencoder

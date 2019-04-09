@@ -79,6 +79,20 @@ def load_data(dataset_name, split):
 
     return dataset, loader
 
+def load_pair_data(dataset_names, split, target_type):
+    input_dataset_path = os.path.join(config.rootPath, 'datasets', dataset_names[0])
+    target_dataset_path = os.path.join(config.rootPath, 'datasets', dataset_names[1])
+
+    istrain = split == 'train'
+    transforms = train_transforms if istrain else test_transforms
+
+    dataset = MiniImageNetPairDataset(input_dataset_path, target_dataset_path, split=split, transforms=transforms, target_type=target_type)
+    loader = DataLoader(dataset, batch_size=config.batchSize, shuffle=istrain, num_workers=config.numberOfWorkers)
+
+    print('{} dataset pair ({}, {}) has {} datapoints in {} batches'.format(split, dataset_names[0], dataset_names[1], len(dataset), len(loader)))
+
+    return dataset, loader
+
 original_train_dataset, original_train_loader = load_data('miniimagenet', 'train')
 original_val_dataset, original_val_loader = load_data('miniimagenet', 'val')
 
@@ -126,7 +140,12 @@ supported_models = {
     # 'resnet50_tune_fc_0.001': create_resnet50_bn_tune_fc,
     # 'resnet50_tune_fc_0.0001': create_resnet50_bn_tune_fc,
     # 'resnet50_in_tune_fc': create_resnet50_in_tune_fc,
-    'resnet50_bin_tune_fc': create_resnet50_bin_tune_fc
+    # 'resnet50_bin_tune_fc': create_resnet50_bin_tune_fc,
+    'vgg19_autoencoder_min': create_vgg19_autoencoder,
+    'vgg19_autoencoder_smin': create_vgg19_autoencoder,
+    'vgg19_autoencoder_highpass': create_vgg19_autoencoder,
+    'vgg19_autoencoder_swap': create_vgg19_autoencoder,
+    'vgg19_autoencoder_mix': create_vgg19_autoencoder
 }
 
 models = {k:v for (k,v) in supported_models.items() if k in (config.model if config.model is not None else supported_models)}
@@ -151,14 +170,20 @@ if config.train:
         logger = create_logger(log_directory, model_name)
         logger.info('Model Name {}'.format(model_name))
         model = models[model_name]()
+        train_loader = original_train_loader
+        val_loader = original_val_loader
+        if 'autoencoder' in model_name:
+            target_type = model_name.split('_')[-1]
+            _, train_loader = load_pair_data(['stylized-miniimagenet-0.0', 'stylized-miniimagenet-1.0'], 'train', target_type)
+            _, val_loader = load_pair_data(['stylized-miniimagenet-0.0', 'stylized-miniimagenet-1.0'], 'val', target_type)
         run(
             model_name, model,
             model_directory,
             config.numberOfEpochs,
             config.learningRate,
             logger,
-            original_train_loader,
-            original_val_loader, config.device,
+            train_loader,
+            val_loader, config.device,
             similarity_weight=similarity_weight if 'similarity' in model_name else None,
             load_data=load_data
         )
@@ -176,5 +201,5 @@ if config.train:
 
 # Check Performance
 
-perf(models, model_directory, dataset_names, config.device, load_data=load_data, only_exists=config.exists)
+# perf(models, model_directory, dataset_names, config.device, load_data=load_data, only_exists=config.exists)
 
