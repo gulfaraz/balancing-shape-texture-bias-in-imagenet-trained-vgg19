@@ -149,6 +149,7 @@ supported_models = {
 }
 
 models = {k:v for (k,v) in supported_models.items() if k in (config.model if config.model is not None else supported_models)}
+assert len(models.keys()) > 0, 'Please specify a model'
 
 sanity(models, original_train_loader, config.device)
 
