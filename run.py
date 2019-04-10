@@ -170,23 +170,34 @@ if config.train:
         logger = create_logger(log_directory, model_name)
         logger.info('Model Name {}'.format(model_name))
         model = models[model_name]()
-        train_loader = original_train_loader
-        val_loader = original_val_loader
         if 'autoencoder' in model_name:
             target_type = model_name.split('_')[-1]
-            _, train_loader = load_pair_data(['stylized-miniimagenet-0.0', 'stylized-miniimagenet-1.0'], 'train', target_type)
-            _, val_loader = load_pair_data(['stylized-miniimagenet-0.0', 'stylized-miniimagenet-1.0'], 'val', target_type)
-        run(
-            model_name, model,
-            model_directory,
-            config.numberOfEpochs,
-            config.learningRate,
-            logger,
-            train_loader,
-            val_loader, config.device,
-            similarity_weight=similarity_weight if 'similarity' in model_name else None,
-            load_data=load_data
-        )
+            _, pair_train_loader = load_pair_data(['stylized-miniimagenet-0.0', 'stylized-miniimagenet-1.0'], 'train', target_type)
+            _, pair_val_loader = load_pair_data(['stylized-miniimagenet-0.0', 'stylized-miniimagenet-1.0'], 'val', target_type)
+            run_autoencoder(
+                model_name, model,
+                model_directory,
+                config.numberOfEpochs,
+                config.learningRate,
+                logger,
+                pair_train_loader,
+                pair_val_loader,
+                original_train_loader,
+                original_val_loader, config.device,
+                load_data=load_data
+            )
+        else:
+            run(
+                model_name, model,
+                model_directory,
+                config.numberOfEpochs,
+                config.learningRate,
+                logger,
+                original_train_loader,
+                original_val_loader, config.device,
+                similarity_weight=similarity_weight if 'similarity' in model_name else None,
+                load_data=load_data
+            )
 
         # # stylized
         # model_name = 'stylized_{}'.format(model_name)

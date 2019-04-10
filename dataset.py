@@ -206,7 +206,8 @@ class MiniImageNetPairDataset(BaseDataset):
         self.classes = self.loadClasses()
         self.groundtruths = self.loadValidationGroundtruths() if split == 'val' else []
         self.INDEX_IMAGE = 2
-        self.INDEX_TARGET = 3
+        self.INDEX_TARGET_IMAGE = 3
+        self.INDEX_TARGET = 4
         self.INDEX_LABEL = 5
 
     def loadImage(self, filepath):

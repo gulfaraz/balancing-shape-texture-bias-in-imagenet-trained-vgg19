@@ -465,20 +465,33 @@ class VGG_AUTOENCODER(torch.nn.Module):
         for layer in vgg19.features:
             self.encoder.append(self.get_encoding_layer(layer))
             self.decoder.insert(0, self.get_decoding_layer(layer))
+        self.classifier = create_miniimagenet_classifier()
 
-    def forward(self, x):
+    def forward(self, x, classify=True):
         indices = []
         for layer in self.encoder:
             x = layer(x)
             if isinstance(layer, torch.nn.MaxPool2d):
                 indices.append(x[1])
                 x = x[0]
-        for layer in self.decoder:
-            if isinstance(layer, torch.nn.MaxUnpool2d):
-                x = layer(x, indices.pop())
-            else:
-                x = layer(x)
+        if classify:
+            x = x.view(x.size(0), -1)
+            x = self.classifier(x)
+        else:
+            for layer in self.decoder:
+                if isinstance(layer, torch.nn.MaxUnpool2d):
+                    x = layer(x, indices.pop())
+                else:
+                    x = layer(x)
         return x
+    
+    def set_mode(self, mode):
+        for params in self.encoder.parameters():
+            params.requires_grad = (mode == 'train-autoencoder')
+        for params in self.decoder.parameters():
+            params.requires_grad = (mode == 'train-autoencoder')
+        for params in self.classifier.parameters():
+            params.requires_grad = (mode == 'train-classifier')
 
     def get_encoding_layer(self, layer):
         if isinstance(layer, torch.nn.MaxPool2d):
@@ -514,4 +527,5 @@ class VGG_AUTOENCODER(torch.nn.Module):
 
 def create_vgg19_autoencoder():
     autoencoder = VGG_AUTOENCODER(pretrained=False)
+    autoencoder.set_mode('eval')
     return autoencoder
