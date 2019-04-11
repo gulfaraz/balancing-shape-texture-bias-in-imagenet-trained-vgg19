@@ -4,6 +4,7 @@ import numpy as np
 from score import *
 from utils import *
 
+DEBUG = False
 
 def calculate_similarity_loss(similarity, kernel_sizes=[64., 128., 256., 512., 512.]):
     number_of_kernels = torch.tensor(kernel_sizes)
@@ -73,6 +74,8 @@ def validate(model, dataloader, criterion, logger, device, similarity_weight=Non
                 logger.debug('Validation Batch {0}/{1}: Top1 Accuracy {2:.4f} Top5 Accuracy {3:.4f} Loss {4:.4f} Classification Loss {5:.4f} Similarity Loss {6:.4f} Similarity Weight {7:.2f}'.format(batch_index + 1, len(dataloader), top1_score, top5_score, mean_loss, mean_classification_loss, mean_similarity_loss, similarity_weight))
             else:
                 logger.debug('Validation Batch {0}/{1}: Top1 Accuracy {2:.4f} Top5 Accuracy {3:.4f} Loss {4:.4f}'.format(batch_index + 1, len(dataloader), top1_score, top5_score, mean_loss))
+            if DEBUG:
+                break
 
     logger.debug('Validation End')
     return top1_score, top5_score, mean_loss
@@ -137,6 +140,8 @@ def train(model, dataloader, criterion, optimizer, logger, device, similarity_we
                 logger.debug('Training Batch {0}/{1}: Top1 Accuracy {2:.4f} Top5 Accuracy {3:.4f} Loss {4:.4f} Classification Loss {5:.4f} Similarity Loss {6:.4f} Similarity Weight {7:.2f}'.format(batch_index + 1, len(dataloader), top1_score, top5_score, mean_loss, mean_classification_loss, mean_similarity_loss, similarity_weight))
             else:
                 logger.debug('Training Batch {0}/{1}: Top1 Accuracy {2:.4f} Top5 Accuracy {3:.4f} Loss {4:.4f}'.format(batch_index + 1, len(dataloader), top1_score, top5_score, mean_loss))
+            if DEBUG:
+                break
 
     logger.debug('Training End')
     return top1_score, top5_score, mean_loss
@@ -149,17 +154,19 @@ def validate_autoencoder(model, dataloader, criterion, logger, device):
     loss = []
 
     for batch_index, batch in enumerate(dataloader):
-        output = model(batch[dataloader.dataset.INDEX_IMAGE].to(device), classify=False)
+        output, mu, logvar = model(batch[dataloader.dataset.INDEX_IMAGE].to(device), classify=False)
         target = batch[dataloader.dataset.INDEX_TARGET_IMAGE].to(device)
 
         # loss
-        batch_loss = criterion(output, target)
+        batch_loss = criterion(output, target, mu, logvar)
 
-        loss.append(batch_loss.item())
+        loss.append(batch_loss.item() / target.size(0))
         mean_loss = np.mean(loss)
 
         if (batch_index + 1) % 10 == 0:
             logger.debug('Validation Batch {}/{}: Loss {:.4f}'.format(batch_index + 1, len(dataloader), mean_loss))
+            if DEBUG:
+                break
 
     logger.debug('Validation End')
     return mean_loss
@@ -173,13 +180,13 @@ def train_autoencoder(model, dataloader, criterion, optimizer, logger, device, g
 
     for batch_index, batch in enumerate(dataloader):
         optimizer.zero_grad()
-        output = model(batch[dataloader.dataset.INDEX_IMAGE].to(device), classify=False)
+        output, mu, logvar = model(batch[dataloader.dataset.INDEX_IMAGE].to(device), classify=False)
         target = batch[dataloader.dataset.INDEX_TARGET_IMAGE].to(device)
 
         # loss
-        batch_loss = criterion(output, target)
+        batch_loss = criterion(output, target, mu, logvar)
 
-        loss.append(batch_loss.item())
+        loss.append(batch_loss.item() / target.size(0))
 
         # backprop
         batch_loss.backward()
@@ -191,6 +198,8 @@ def train_autoencoder(model, dataloader, criterion, optimizer, logger, device, g
             
         if (batch_index + 1) % 10 == 0:
             logger.debug('Training Batch {}/{}: Loss {:.4f}'.format(batch_index + 1, len(dataloader), mean_loss))
+            if DEBUG:
+                break
 
     logger.debug('Training End')
     return mean_loss
@@ -246,6 +255,18 @@ def run(model_name, model, model_directory, number_of_epochs, learning_rate, log
     logger.info('Validation: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(checkpoint['validation_loss'], checkpoint['validation_top1_accuracy'], checkpoint['validation_top5_accuracy']))
 
 
+class vaeLoss(torch.nn.Module):
+    def __init__(self):
+        super(vaeLoss, self).__init__()
+        self.mse_loss = torch.nn.MSELoss(reduction='sum')
+
+    def forward(self, x_recon, x, mu, logvar):
+        loss_MSE = self.mse_loss(x_recon, x)
+        loss_KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+
+        return loss_MSE + loss_KLD
+
+
 def run_autoencoder(model_name, model, model_directory, number_of_epochs, learning_rate, logger, pair_train_loader, pair_val_loader, train_loader, val_loader, device, dataset_names=['miniimagenet', 'stylized-miniimagenet-1.0'], load_data=None):
     logger.info('Epochs {}'.format(number_of_epochs))
     logger.info('Batch Size {}'.format(pair_train_loader.batch_size))
@@ -254,7 +275,7 @@ def run_autoencoder(model_name, model, model_directory, number_of_epochs, learni
     logger.info('Learning Rate {}'.format(learning_rate))
     logger.info('Device {}'.format(device))
 
-    criterion = torch.nn.MSELoss()
+    criterion = vaeLoss()
     autoencoder_parameters = list(model.encoder.parameters()) + list(model.decoder.parameters())
     optimizer = torch.optim.Adam(autoencoder_parameters, lr=learning_rate)
     
@@ -286,7 +307,7 @@ def run_autoencoder(model_name, model, model_directory, number_of_epochs, learni
 
     # train classifier
     model.set_mode('train-classifier')
-    classifier_learning_rate = 0.1
+    classifier_learning_rate = 0.01
     run(model_name, model, model_directory, number_of_epochs, classifier_learning_rate, logger, train_loader, val_loader, device, dataset_names=dataset_names, load_data=load_data)
 
     logger.info('Train: Loss: {:.4f}'.format(checkpoint['train_loss']))

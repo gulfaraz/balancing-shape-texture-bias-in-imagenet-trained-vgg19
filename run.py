@@ -145,7 +145,8 @@ supported_models = {
     'vgg19_autoencoder_smin': create_vgg19_autoencoder,
     'vgg19_autoencoder_highpass': create_vgg19_autoencoder,
     'vgg19_autoencoder_swap': create_vgg19_autoencoder,
-    'vgg19_autoencoder_mix': create_vgg19_autoencoder
+    'vgg19_autoencoder_mix': create_vgg19_autoencoder,
+    'vgg19_variational_autoencoder_min': create_vgg19_variational_autoencoder
 }
 
 models = {k:v for (k,v) in supported_models.items() if k in (config.model if config.model is not None else supported_models)}

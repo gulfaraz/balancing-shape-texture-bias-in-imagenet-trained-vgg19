@@ -529,3 +529,123 @@ def create_vgg19_autoencoder():
     autoencoder = VGG_AUTOENCODER(pretrained=False)
     autoencoder.set_mode('eval')
     return autoencoder
+
+
+class VGG_VAE(torch.nn.Module):
+    def __init__(self, pretrained=False):
+        super(VGG_VAE, self).__init__()
+        vgg19 = models.vgg19(pretrained=pretrained)
+        self.encoder = torch.nn.ModuleList([])
+        self.decoder = torch.nn.ModuleList([])
+        for layer in vgg19.features:
+            self.encoder.append(self.get_encoding_layer(layer))
+            self.decoder.insert(0, self.get_decoding_layer(layer))
+        self.classifier = create_miniimagenet_classifier()
+
+        latent_size = 25088
+        self.encoder_to_latent = torch.nn.Sequential(
+            torch.nn.Linear(latent_size, 10240),
+            torch.nn.BatchNorm1d(10240),
+            torch.nn.ReLU(inplace=True),
+            torch.nn.Linear(10240, 4096),
+            torch.nn.BatchNorm1d(4096),
+            torch.nn.ReLU(inplace=True)
+        )
+
+        self.latent_to_mu = torch.nn.Linear(4096, 4096)
+        self.latent_to_logvar = torch.nn.Linear(4096, 4096)
+
+        self.latent_to_decoder = torch.nn.Sequential(
+            torch.nn.Linear(4096, 4096),
+            torch.nn.BatchNorm1d(4096),
+            torch.nn.ReLU(inplace=True),
+            torch.nn.Linear(4096, 10240),
+            torch.nn.BatchNorm1d(10240),
+            torch.nn.ReLU(inplace=True),
+            torch.nn.Linear(10240, latent_size),
+            torch.nn.BatchNorm1d(latent_size),
+            torch.nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x, classify=True):
+        indices = []
+        for layer in self.encoder:
+            x = layer(x)
+            if isinstance(layer, torch.nn.MaxPool2d):
+                indices.append(x[1])
+                x = x[0]
+        if classify:
+            x = x.view(x.size(0), -1)
+            x = self.classifier(x)
+            return x
+        else:
+            batch_size = x.size(0)
+            channel_size = x.size(1)
+            height_size = x.size(2)
+            width_size = x.size(3)
+            x = x.view(x.size(0), -1)
+            latent = self.encoder_to_latent(x)
+            mu = self.latent_to_mu(latent)
+            logvar = self.latent_to_logvar(latent)
+            z = self.reparameterize(mu, logvar)
+            x = self.latent_to_decoder(z)
+            x = x.view(batch_size, channel_size, height_size, width_size)
+            for layer in self.decoder:
+                if isinstance(layer, torch.nn.MaxUnpool2d):
+                    x = layer(x, indices.pop())
+                else:
+                    x = layer(x)
+            return x, mu, logvar
+    
+    def set_mode(self, mode):
+        for params in self.encoder.parameters():
+            params.requires_grad = (mode == 'train-autoencoder')
+        for params in self.decoder.parameters():
+            params.requires_grad = (mode == 'train-autoencoder')
+        for params in self.classifier.parameters():
+            params.requires_grad = (mode == 'train-classifier')
+
+    def get_encoding_layer(self, layer):
+        if isinstance(layer, torch.nn.MaxPool2d):
+            return torch.nn.MaxPool2d(
+                layer.kernel_size,
+                stride=layer.stride,
+                padding=layer.padding,
+                dilation=layer.dilation,
+                return_indices=True,
+                ceil_mode=layer.ceil_mode
+            )
+        return layer
+
+    def get_decoding_layer(self, layer):
+        if isinstance(layer, torch.nn.Conv2d):
+            return torch.nn.ConvTranspose2d(
+                layer.out_channels,
+                layer.in_channels,
+                layer.kernel_size,
+                stride=layer.stride,
+                padding=layer.padding,
+                dilation=layer.dilation,
+                groups=layer.groups,
+                bias=(layer.bias is not None)
+            )
+        elif isinstance(layer, torch.nn.MaxPool2d):
+            return torch.nn.MaxUnpool2d(
+                layer.kernel_size,
+                stride=layer.stride,
+                padding=layer.padding
+            )
+        return layer
+
+    def reparameterize(self, mu, logvar):
+        if self.training:
+            std = logvar.mul(0.5).exp_()
+            eps = torch.Tensor(std.data.new(std.size()).normal_())
+            return eps.mul(std).add_(mu)
+        else:
+            return mu
+
+def create_vgg19_variational_autoencoder():
+    vae = VGG_VAE(pretrained=False)
+    vae.set_mode('eval')
+    return vae
