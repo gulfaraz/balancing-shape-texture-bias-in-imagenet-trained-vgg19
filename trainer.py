@@ -3,6 +3,7 @@ import torch
 import numpy as np
 from score import *
 from utils import *
+from torchvision.utils import save_image
 
 DEBUG = False
 
@@ -147,7 +148,7 @@ def train(model, dataloader, criterion, optimizer, logger, device, similarity_we
     return top1_score, top5_score, mean_loss
 
 
-def validate_autoencoder(model, dataloader, criterion, logger, device):
+def validate_autoencoder(model, dataloader, criterion, logger, device, filename):
     logger.debug('Validation Start')
     model.eval()
 
@@ -162,6 +163,11 @@ def validate_autoencoder(model, dataloader, criterion, logger, device):
 
         loss.append(batch_loss.item() / target.size(0))
         mean_loss = np.mean(loss)
+
+        if batch_index == 0:
+            n = min(target.size(0), 8)
+            comparison = torch.cat([target[:n], output.view(target.size(0), target.size(1), target.size(2), target.size(3))[:n]])
+            save_image(comparison.cpu(), filename, nrow=n, normalize=True)
 
         if (batch_index + 1) % 10 == 0:
             logger.debug('Validation Batch {}/{}: Loss {:.4f}'.format(batch_index + 1, len(dataloader), mean_loss))
@@ -287,7 +293,17 @@ def run_autoencoder(model_name, model, model_directory, number_of_epochs, learni
         model.set_mode('train-autoencoder')
         train_loss = train_autoencoder(model, pair_train_loader, criterion, optimizer, logger, device)
         model.set_mode('eval')
-        validation_loss = validate_autoencoder(model, pair_val_loader, criterion, logger, device)
+        images_directory = pathJoin('vae-images')
+        os.makedirs(images_directory, exist_ok=True)
+        images_filename = pathJoin(images_directory, '{}_epoch_{}.png'.format(model_name, epoch))
+        validation_loss = validate_autoencoder(model, pair_val_loader, criterion, logger, device, images_filename)
+        with torch.no_grad():
+            z = torch.randn(64, model.z_size).to(device)
+            x = model.latent_to_decoder(z)
+            x = x.view(64, 512, 7, 7)
+            sample = model.decode(x).cpu()
+            sample_filename = pathJoin(images_directory, '{}_epoch_{}_samples.png'.format(model_name, epoch))
+            save_image(sample.view(64, 3, 224, 224), sample_filename, normalize=True)
         logger.info('Epoch {0}: Train: Loss: {1:.4f} Validation: Loss: {2:.4f}'.format(epoch, train_loss, validation_loss))
 
         lr_scheduler.step(validation_loss)

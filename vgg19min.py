@@ -543,37 +543,61 @@ class VGG_VAE(torch.nn.Module):
         self.classifier = create_miniimagenet_classifier()
 
         latent_size = 25088
+        self.z_size = 4096
         self.encoder_to_latent = torch.nn.Sequential(
             torch.nn.Linear(latent_size, 10240),
             torch.nn.BatchNorm1d(10240),
             torch.nn.ReLU(inplace=True),
-            torch.nn.Linear(10240, 4096),
-            torch.nn.BatchNorm1d(4096),
+            torch.nn.Linear(10240, self.z_size),
+            torch.nn.BatchNorm1d(self.z_size),
             torch.nn.ReLU(inplace=True)
         )
 
-        self.latent_to_mu = torch.nn.Linear(4096, 4096)
-        self.latent_to_logvar = torch.nn.Linear(4096, 4096)
+        self.latent_to_mu = torch.nn.Linear(self.z_size, self.z_size)
+        self.latent_to_logvar = torch.nn.Linear(self.z_size, self.z_size)
 
         self.latent_to_decoder = torch.nn.Sequential(
-            torch.nn.Linear(4096, 4096),
-            torch.nn.BatchNorm1d(4096),
+            torch.nn.Linear(self.z_size, self.z_size),
+            torch.nn.BatchNorm1d(self.z_size),
             torch.nn.ReLU(inplace=True),
-            torch.nn.Linear(4096, 10240),
+            torch.nn.Linear(self.z_size, 10240),
             torch.nn.BatchNorm1d(10240),
             torch.nn.ReLU(inplace=True),
             torch.nn.Linear(10240, latent_size),
             torch.nn.BatchNorm1d(latent_size),
             torch.nn.ReLU(inplace=True)
         )
-
-    def forward(self, x, classify=True):
+    
+    def encode(self, x):
         indices = []
         for layer in self.encoder:
             x = layer(x)
             if isinstance(layer, torch.nn.MaxPool2d):
                 indices.append(x[1])
                 x = x[0]
+        return x, indices
+    
+    def decode(self, x, indices=None):
+        for layer in self.decoder:
+            if isinstance(layer, torch.nn.MaxUnpool2d):
+                if indices is None:
+                    upsample = torch.nn.Upsample(scale_factor=2)
+                    maxpool = torch.nn.MaxPool2d(
+                        layer.kernel_size,
+                        stride=layer.stride,
+                        padding=layer.padding,
+                        return_indices=True
+                    )
+                    _, index = maxpool(torch.zeros_like(upsample(x)))
+                else:
+                    index = indices.pop()
+                x = layer(x, index)
+            else:
+                x = layer(x)
+        return x
+
+    def forward(self, x, classify=True):
+        x, indices = self.encode(x)
         if classify:
             x = x.view(x.size(0), -1)
             x = self.classifier(x)
@@ -590,11 +614,7 @@ class VGG_VAE(torch.nn.Module):
             z = self.reparameterize(mu, logvar)
             x = self.latent_to_decoder(z)
             x = x.view(batch_size, channel_size, height_size, width_size)
-            for layer in self.decoder:
-                if isinstance(layer, torch.nn.MaxUnpool2d):
-                    x = layer(x, indices.pop())
-                else:
-                    x = layer(x)
+            x = self.decode(x, indices=indices)
             return x, mu, logvar
     
     def set_mode(self, mode):
