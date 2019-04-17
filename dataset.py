@@ -197,7 +197,7 @@ class ImageNetDataset(BaseDataset):
 
 class MiniImageNetPairDataset(BaseDataset):
 
-    def __init__(self, input_directory, target_directory, split='train', transforms=None, target_type=None):
+    def __init__(self, input_directory, target_directory, split='train', transforms=None, target_type=None, target_transforms=None):
         assert target_type in ['min', 'smin', 'highpass', 'swap', 'mix'], 'Unknown target type ({}) for pair dataset'.format(target_type)
         self.target_directory = pathJoin(target_directory, split)
         super().__init__(input_directory, split, transforms)
@@ -209,6 +209,7 @@ class MiniImageNetPairDataset(BaseDataset):
         self.INDEX_TARGET_IMAGE = 3
         self.INDEX_TARGET = 4
         self.INDEX_LABEL = 5
+        self.target_transforms = target_transforms
 
     def loadImage(self, filepath):
         if not os.path.isfile(filepath):
@@ -239,7 +240,7 @@ class MiniImageNetPairDataset(BaseDataset):
             groundtruth = self.classes.index(input_filepath.split('/').pop().split('_')[0])
         if self.transforms:
             input_image = self.transforms(input_image)
-            target_image = self.transforms(target_image)
+            target_image = self.target_transforms(target_image)
         return (input_filepath, target_filepath, input_image, target_image, groundtruth, self.descriptions[groundtruth])
 
     def loadDataset(self):

@@ -66,6 +66,24 @@ test_transforms = transforms.Compose([
     normalize
 ])
 
+pair_transforms = transforms.Compose([
+    transforms.CenterCrop(IMAGE_SIZE),
+    transforms.ToTensor(),
+    normalize
+])
+
+highpass_transforms = transforms.Compose([
+    transforms.CenterCrop(IMAGE_SIZE),
+    transforms.Grayscale(num_output_channels=1),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5, 0.5, 0.5],
+                        std=[0.225, 0.225, 0.225]),
+    lambda x: x>0,
+    lambda x: x.float(),
+    transforms.Normalize(mean=[0.5, 0.5, 0.5],
+                        std=[0.225, 0.225, 0.225])
+])
+
 def load_data(dataset_name, split):
     dataset_path = os.path.join(config.rootPath, 'datasets', dataset_name)
 
@@ -84,9 +102,9 @@ def load_pair_data(dataset_names, split, target_type):
     target_dataset_path = os.path.join(config.rootPath, 'datasets', dataset_names[1])
 
     istrain = split == 'train'
-    transforms = train_transforms if istrain else test_transforms
+    target_transforms = highpass_transforms if target_type == 'highpass' else pair_transforms
 
-    dataset = MiniImageNetPairDataset(input_dataset_path, target_dataset_path, split=split, transforms=transforms, target_type=target_type)
+    dataset = MiniImageNetPairDataset(input_dataset_path, target_dataset_path, split=split, transforms=pair_transforms, target_type=target_type, target_transforms=target_transforms)
     loader = DataLoader(dataset, batch_size=config.batchSize, shuffle=istrain, num_workers=config.numberOfWorkers)
 
     print('{} dataset pair ({}, {}) has {} datapoints in {} batches'.format(split, dataset_names[0], dataset_names[1], len(dataset), len(loader)))
@@ -141,12 +159,16 @@ supported_models = {
     # 'resnet50_tune_fc_0.0001': create_resnet50_bn_tune_fc,
     # 'resnet50_in_tune_fc': create_resnet50_in_tune_fc,
     # 'resnet50_bin_tune_fc': create_resnet50_bin_tune_fc,
-    'vgg19_autoencoder_min': create_vgg19_autoencoder,
-    'vgg19_autoencoder_smin': create_vgg19_autoencoder,
-    'vgg19_autoencoder_highpass': create_vgg19_autoencoder,
-    'vgg19_autoencoder_swap': create_vgg19_autoencoder,
-    'vgg19_autoencoder_mix': create_vgg19_autoencoder,
-    'vgg19_variational_autoencoder_min': create_vgg19_variational_autoencoder
+    # 'vgg19_autoencoder_min': create_vgg19_autoencoder,
+    # 'vgg19_autoencoder_smin': create_vgg19_autoencoder,
+    # 'vgg19_autoencoder_highpass': create_vgg19_autoencoder,
+    # 'vgg19_autoencoder_swap': create_vgg19_autoencoder,
+    # 'vgg19_autoencoder_mix': create_vgg19_autoencoder,
+    'vgg19_variational_autoencoder_min': create_vgg19_variational_autoencoder,
+    'vgg19_variational_autoencoder_smin': create_vgg19_variational_autoencoder,
+    'vgg19_variational_autoencoder_highpass': create_vgg19_variational_autoencoder,
+    'vgg19_variational_autoencoder_swap': create_vgg19_variational_autoencoder,
+    'vgg19_variational_autoencoder_mix': create_vgg19_variational_autoencoder
 }
 
 models = {k:v for (k,v) in supported_models.items() if k in (config.model if config.model is not None else supported_models)}
