@@ -20,6 +20,8 @@ from torch.utils.data import DataLoader
 import torchvision
 import torchvision.transforms as transforms
 
+import cv2
+
 
 requirements = {
     torch: '1'
@@ -68,6 +70,7 @@ test_transforms = transforms.Compose([
 
 bilateral_train_transforms = transforms.Compose([
     lambda x: np.array(cv2.bilateralFilter(np.array(x), 10, 100, 50)),
+    transforms.ToPILImage(),
     transforms.RandomResizedCrop(IMAGE_SIZE[0]),
     transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
@@ -76,6 +79,7 @@ bilateral_train_transforms = transforms.Compose([
 
 bilateral_test_transforms = transforms.Compose([
     lambda x: np.array(cv2.bilateralFilter(np.array(x), 10, 100, 50)),
+    transforms.ToPILImage(),
     transforms.Resize(256),
     transforms.CenterCrop(IMAGE_SIZE),
     transforms.ToTensor(),
