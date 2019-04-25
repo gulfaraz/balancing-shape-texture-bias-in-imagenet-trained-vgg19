@@ -94,7 +94,7 @@ pair_transforms = transforms.Compose([
 
 highpass_transforms = transforms.Compose([
     transforms.CenterCrop(IMAGE_SIZE),
-    transforms.Grayscale(num_output_channels=1),
+    transforms.Grayscale(num_output_channels=3),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.5, 0.5, 0.5],
                         std=[0.225, 0.225, 0.225]),
@@ -187,18 +187,25 @@ supported_models = {
     # 'vgg19_autoencoder_highpass': create_vgg19_autoencoder,
     # 'vgg19_autoencoder_swap': create_vgg19_autoencoder,
     # 'vgg19_autoencoder_mix': create_vgg19_autoencoder,
-    # 'vgg19_variational_autoencoder_min': create_vgg19_variational_autoencoder,
-    # 'vgg19_variational_autoencoder_smin': create_vgg19_variational_autoencoder,
+    # 'vgg19_variational_autoencoder_min_0.001': create_vgg19_variational_autoencoder,
+    # 'vgg19_variational_autoencoder_smin_0.001': create_vgg19_variational_autoencoder,
+    # 'vgg19_variational_autoencoder_min_0.005': create_vgg19_variational_autoencoder,
+    # 'vgg19_variational_autoencoder_smin_0.005': create_vgg19_variational_autoencoder,
     # 'vgg19_variational_autoencoder_highpass': create_vgg19_variational_autoencoder,
     # 'vgg19_variational_autoencoder_swap': create_vgg19_variational_autoencoder,
     # 'vgg19_variational_autoencoder_mix': create_vgg19_variational_autoencoder,
-    'vgg19_vanilla_tune_fc_bilateral': create_vgg19_vanilla_tune_fc,
-    'vgg19_bn_all_tune_fc_bilateral': create_vgg19_bn_all_tune_fc,
-    'vgg19_in_single_tune_all_bilateral': create_vgg19_in_single_tune_all,
-    'vgg19_in_affine_single_tune_all_bilateral': create_vgg19_in_affine_single_tune_all,
-    'resnet50_tune_fc_0.01_bilateral': create_resnet50_bn_tune_fc,
-    'resnet50_bin_tune_fc_bilateral': create_resnet50_bin_tune_fc
+    # 'vgg19_vanilla_tune_fc_bilateral': create_vgg19_vanilla_tune_fc,
+    # 'vgg19_bn_all_tune_fc_bilateral': create_vgg19_bn_all_tune_fc,
+    # 'vgg19_in_single_tune_all_bilateral': create_vgg19_in_single_tune_all,
+    # 'vgg19_in_affine_single_tune_all_bilateral': create_vgg19_in_affine_single_tune_all,
+    # 'resnet50_tune_fc_0.01_bilateral': create_resnet50_bn_tune_fc,
+    # 'resnet50_bin_tune_fc_bilateral': create_resnet50_bin_tune_fc
 }
+
+SKIP_AUTOENCODER_TRAINING = [
+    'vgg19_variational_autoencoder_min',
+    'vgg19_variational_autoencoder_smin'
+]
 
 models = {k:v for (k,v) in supported_models.items() if k in (config.model if config.model is not None else supported_models)}
 assert len(models.keys()) > 0, 'Please specify a model'
@@ -231,13 +238,15 @@ if config.train:
                 model_name, model,
                 model_directory,
                 config.numberOfEpochs,
-                config.learningRate,
+                config.autoencoderlearningRate,
+                config.classifierlearningRate,
                 logger,
                 pair_train_loader,
                 pair_val_loader,
                 original_train_loader,
                 original_val_loader, config.device,
-                load_data=load_data
+                load_data=load_data,
+                train_autoencoder=model_name not in SKIP_AUTOENCODER_TRAINING
             )
         else:
             run(

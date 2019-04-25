@@ -273,61 +273,68 @@ class vaeLoss(torch.nn.Module):
         return loss_MSE + loss_KLD
 
 
-def run_autoencoder(model_name, model, model_directory, number_of_epochs, learning_rate, logger, pair_train_loader, pair_val_loader, train_loader, val_loader, device, dataset_names=['miniimagenet', 'stylized-miniimagenet-1.0'], load_data=None):
-    logger.info('Epochs {}'.format(number_of_epochs))
-    logger.info('Batch Size {}'.format(pair_train_loader.batch_size))
-    logger.info('Number of Workers {}'.format(pair_train_loader.num_workers))
-    logger.info('Optimizer {}'.format('SGD w/ Momentum'))
-    logger.info('Learning Rate {}'.format(learning_rate))
-    logger.info('Device {}'.format(device))
+def run_autoencoder(
+        model_name, model, model_directory,
+        number_of_epochs, autoencoder_learning_rate, classifier_learning_rate,
+        logger, pair_train_loader, pair_val_loader, train_loader, val_loader,
+        device, dataset_names=['miniimagenet', 'stylized-miniimagenet-1.0'],
+        load_data=None, train_autoencoder=True
+    ):
+    if train_autoencoder:
+        logger.info('Epochs {}'.format(number_of_epochs))
+        logger.info('Batch Size {}'.format(pair_train_loader.batch_size))
+        logger.info('Number of Workers {}'.format(pair_train_loader.num_workers))
+        logger.info('Optimizer {}'.format('SGD w/ Momentum'))
+        logger.info('Autoencoder Learning Rate {}'.format(autoencoder_learning_rate))
+        logger.info('Device {}'.format(device))
 
-    criterion = vaeLoss()
-    autoencoder_parameters = list(model.encoder.parameters()) + list(model.decoder.parameters())
-    optimizer = torch.optim.Adam(autoencoder_parameters, lr=learning_rate)
-    
-    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=5, min_lr=1e-5, verbose=True)
-    
-    best_validation_accuracy = -1.0
+        criterion = vaeLoss()
+        autoencoder_parameters = list(model.encoder.parameters()) + list(model.decoder.parameters())
+        optimizer = torch.optim.Adam(autoencoder_parameters, lr=autoencoder_learning_rate)
+        
+        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=5, min_lr=1e-5, verbose=True)
+        
+        best_validation_accuracy = -1.0
 
-    for epoch in range(1, number_of_epochs + 1):
-        model.set_mode('train-autoencoder')
-        train_loss = train_autoencoder(model, pair_train_loader, criterion, optimizer, logger, device)
-        model.set_mode('eval')
-        images_directory = pathJoin('vae-images')
-        os.makedirs(images_directory, exist_ok=True)
-        images_filename = pathJoin(images_directory, '{}_epoch_{}.png'.format(model_name, epoch))
-        validation_loss = validate_autoencoder(model, pair_val_loader, criterion, logger, device, images_filename)
-        with torch.no_grad():
-            z = torch.randn(64, model.z_size).to(device)
-            x = model.latent_to_decoder(z)
-            x = x.view(64, 512, 7, 7)
-            sample = model.decode(x).cpu()
-            sample_filename = pathJoin(images_directory, '{}_epoch_{}_samples.png'.format(model_name, epoch))
-            save_image(sample.view(64, 3, 224, 224), sample_filename, normalize=True)
-        logger.info('Epoch {0}: Train: Loss: {1:.4f} Validation: Loss: {2:.4f}'.format(epoch, train_loss, validation_loss))
+        for epoch in range(1, number_of_epochs + 1):
+            model.set_mode('train-autoencoder')
+            train_loss = train_autoencoder(model, pair_train_loader, criterion, optimizer, logger, device)
+            model.set_mode('eval')
+            images_directory = pathJoin('vae-images')
+            os.makedirs(images_directory, exist_ok=True)
+            images_filename = pathJoin(images_directory, '{}_epoch_{}.png'.format(model_name, epoch))
+            validation_loss = validate_autoencoder(model, pair_val_loader, criterion, logger, device, images_filename)
+            with torch.no_grad():
+                z = torch.randn(64, model.z_size).to(device)
+                x = model.latent_to_decoder(z)
+                x = x.view(64, 512, 7, 7)
+                sample = model.decode(x).cpu()
+                sample_filename = pathJoin(images_directory, '{}_epoch_{}_samples.png'.format(model_name, epoch))
+                save_image(sample.view(64, 3, 224, 224), sample_filename, normalize=True)
+            logger.info('Epoch {0}: Train: Loss: {1:.4f} Validation: Loss: {2:.4f}'.format(epoch, train_loss, validation_loss))
 
-        lr_scheduler.step(validation_loss)
+            lr_scheduler.step(validation_loss)
 
-        logger.debug('Saving new weights')
-        os.makedirs(model_directory, exist_ok=True)
-        checkpoint = {
-            'epoch': epoch,
-            'train_loss': train_loss,
-            'validation_loss': validation_loss,
-            'weights': model.state_dict(),
-            'optimizer_weights': optimizer.state_dict()
-        }
-        torch.save(checkpoint, pathJoin(model_directory, '{}.ckpt'.format(model_name)))
+            logger.debug('Saving new weights')
+            os.makedirs(model_directory, exist_ok=True)
+            checkpoint = {
+                'epoch': epoch,
+                'train_loss': train_loss,
+                'validation_loss': validation_loss,
+                'weights': model.state_dict(),
+                'optimizer_weights': optimizer.state_dict()
+            }
+            torch.save(checkpoint, pathJoin(model_directory, '{}.ckpt'.format(model_name)))
 
-    logger.info('Epoch {}'.format(checkpoint['epoch']))
+        logger.info('Epoch {}'.format(checkpoint['epoch']))
 
     # train classifier
     model.set_mode('train-classifier')
-    classifier_learning_rate = 0.01
     run(model_name, model, model_directory, number_of_epochs, classifier_learning_rate, logger, train_loader, val_loader, device, dataset_names=dataset_names, load_data=load_data)
 
-    logger.info('Train: Loss: {:.4f}'.format(checkpoint['train_loss']))
-    logger.info('Validation: Loss: {:.4f}'.format(checkpoint['validation_loss']))
+    if train_autoencoder:
+        logger.info('Train: Loss: {:.4f}'.format(checkpoint['train_loss']))
+        logger.info('Validation: Loss: {:.4f}'.format(checkpoint['validation_loss']))
 
 
 def perf(model_list, model_directory, dataset_names, device, load_data=None, only_exists=None):
