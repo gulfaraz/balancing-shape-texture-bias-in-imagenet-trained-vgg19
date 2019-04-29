@@ -64,7 +64,7 @@ def configuration():
                         help='batch size for training')
     parser.add_argument('--learningRate', type=float, default=0.0001,
                         help='learning rate for training')
-    parser.add_argument('--autoencoderLearningRate', type=float, default=0.0001,
+    parser.add_argument('--autoencoderLearningRate', type=float, default=0.001,
                         help='learning rate for autoencoder training')
     parser.add_argument('--classifierLearningRate', type=float, default=0.001,
                         help='learning rate for classifier training')

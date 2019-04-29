@@ -278,9 +278,9 @@ def run_autoencoder(
         number_of_epochs, autoencoder_learning_rate, classifier_learning_rate,
         logger, pair_train_loader, pair_val_loader, train_loader, val_loader,
         device, dataset_names=['miniimagenet', 'stylized-miniimagenet-1.0'],
-        load_data=None, train_autoencoder=True
+        load_data=None, should_train_autoencoder=True
     ):
-    if train_autoencoder:
+    if should_train_autoencoder:
         logger.info('Epochs {}'.format(number_of_epochs))
         logger.info('Batch Size {}'.format(pair_train_loader.batch_size))
         logger.info('Number of Workers {}'.format(pair_train_loader.num_workers))
@@ -332,7 +332,7 @@ def run_autoencoder(
     model.set_mode('train-classifier')
     run(model_name, model, model_directory, number_of_epochs, classifier_learning_rate, logger, train_loader, val_loader, device, dataset_names=dataset_names, load_data=load_data)
 
-    if train_autoencoder:
+    if should_train_autoencoder:
         logger.info('Train: Loss: {:.4f}'.format(checkpoint['train_loss']))
         logger.info('Validation: Loss: {:.4f}'.format(checkpoint['validation_loss']))
 
