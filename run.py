@@ -156,6 +156,10 @@ dataset_names = [
 ]
 
 
+# models directory
+model_directory = pathJoin(config.rootPath, 'models')
+
+
 supported_models = {
     'vgg19_vanilla_tune_fc': create_vgg19_vanilla_tune_fc,
     'vgg19_bn_all_tune_fc': create_vgg19_bn_all_tune_fc,
@@ -187,6 +191,9 @@ supported_models = {
     'vgg19_autoencoder_highpass': create_vgg19_autoencoder,
     'vgg19_autoencoder_swap': create_vgg19_autoencoder,
     'vgg19_autoencoder_mix': create_vgg19_autoencoder,
+    'vgg19_variational_autoencoder_loss_min': create_vgg19_variational_autoencoder,
+    'vgg19_variational_autoencoder_loss_smin': create_vgg19_variational_autoencoder,
+    'vgg19_variational_autoencoder_loss_highpass': create_vgg19_variational_autoencoder,
     'vgg19_variational_autoencoder_min_0.001': create_vgg19_variational_autoencoder,
     'vgg19_variational_autoencoder_smin_0.001': create_vgg19_variational_autoencoder,
     'vgg19_variational_autoencoder_min_0.005': create_vgg19_variational_autoencoder,
@@ -199,7 +206,8 @@ supported_models = {
     'vgg19_in_single_tune_all_bilateral': create_vgg19_in_single_tune_all,
     'vgg19_in_affine_single_tune_all_bilateral': create_vgg19_in_affine_single_tune_all,
     'resnet50_tune_fc_0.01_bilateral': create_resnet50_bn_tune_fc,
-    'resnet50_bin_tune_fc_bilateral': create_resnet50_bin_tune_fc
+    'resnet50_bin_tune_fc_bilateral': create_resnet50_bin_tune_fc,
+    'vgg19_in_single_tune_all_vae_highpass': create_vgg19_vae_support('vgg19_in_single_tune_all', 'vgg19_variational_autoencoder_highpass', model_directory, config.device)
 }
 
 SKIP_AUTOENCODER_TRAINING = [
@@ -212,10 +220,6 @@ models = {k:v for (k,v) in supported_models.items() if k in (config.model if con
 assert len(models.keys()) > 0, 'Please specify a model'
 
 sanity(models, original_train_loader, config.device)
-
-
-# models directory
-model_directory = pathJoin(config.rootPath, 'models')
 
 if config.train:
 

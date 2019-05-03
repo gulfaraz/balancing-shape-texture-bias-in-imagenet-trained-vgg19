@@ -18,6 +18,7 @@ def sanity(model_list, loader, device):
     for model_type in model_list:
         print(model_type)
         model = model_list[model_type]()
+        model.train()
         for batch in loader:
             index_image = loader.dataset.INDEX_IMAGE
             model(batch[index_image].to(device))
@@ -148,18 +149,33 @@ def train(model, dataloader, criterion, optimizer, logger, device, similarity_we
     return top1_score, top5_score, mean_loss
 
 
-def validate_autoencoder(model, dataloader, criterion, logger, device, filename):
+def validate_autoencoder(model, dataloader, criterion, logger, device, filename, habits_lambda=0.2):
     logger.debug('Validation Start')
     model.eval()
 
     loss = []
+
+    kl_init = 0.01 * len(dataloader)
+    kl_weight = 0.0
+    kl_max = 1.0
+    kl_step = (kl_max - kl_weight) / (len(dataloader) // 2)
+
+    logger.debug('KL: INIT: {} WEIGHT: {} MAX: {} STEP: {}'.format(kl_init, kl_weight, kl_max, kl_step))
 
     for batch_index, batch in enumerate(dataloader):
         output, mu, logvar = model(batch[dataloader.dataset.INDEX_IMAGE].to(device), classify=False)
         target = batch[dataloader.dataset.INDEX_TARGET_IMAGE].to(device)
 
         # loss
-        batch_loss = criterion(output, target, mu, logvar)
+        mse, kl = criterion(output, target, mu, logvar)
+        clamp_kl = torch.clamp(kl.mean(), min=habits_lambda).squeeze()
+        effective_kl = clamp_kl * kl_weight
+        batch_loss = mse + effective_kl
+        logger.debug('BATCH LOSS: {} MSE: {} KL-EFFECTIVE: {} KL-CLAMPED: {} KL: {} KL-WEIGHT: {}'.format(
+            batch_loss.item(), mse.item(), effective_kl.item(), clamp_kl.item(), kl.item(), kl_weight))
+
+        if batch_index > kl_init and kl_weight < kl_max:
+            kl_weight += kl_step
 
         loss.append(batch_loss.item() / target.size(0))
         mean_loss = np.mean(loss)
@@ -178,11 +194,18 @@ def validate_autoencoder(model, dataloader, criterion, logger, device, filename)
     return mean_loss
 
 
-def train_autoencoder(model, dataloader, criterion, optimizer, logger, device, grad_clip_norm_value=50):
+def train_autoencoder(model, dataloader, criterion, optimizer, logger, device, grad_clip_norm_value=50, habits_lambda=0.2):
     logger.debug('Training Start')
     model.train()
 
     loss = []
+
+    kl_init = 0.01 * len(dataloader)
+    kl_weight = 0.0
+    kl_max = 1.0
+    kl_step = (kl_max - kl_weight) / (len(dataloader) // 2)
+
+    logger.debug('KL: INIT: {} WEIGHT: {} MAX: {} STEP: {}'.format(kl_init, kl_weight, kl_max, kl_step))
 
     for batch_index, batch in enumerate(dataloader):
         optimizer.zero_grad()
@@ -190,7 +213,15 @@ def train_autoencoder(model, dataloader, criterion, optimizer, logger, device, g
         target = batch[dataloader.dataset.INDEX_TARGET_IMAGE].to(device)
 
         # loss
-        batch_loss = criterion(output, target, mu, logvar)
+        mse, kl = criterion(output, target, mu, logvar)
+        clamp_kl = torch.clamp(kl.mean(), min=habits_lambda).squeeze()
+        effective_kl = clamp_kl * kl_weight
+        batch_loss = mse + effective_kl
+        logger.debug('BATCH LOSS: {} MSE: {} KL-EFFECTIVE: {} KL-CLAMPED: {} KL: {} KL-WEIGHT: {}'.format(
+            batch_loss.item(), mse.item(), effective_kl.item(), clamp_kl.item(), kl.item(), kl_weight))
+
+        if batch_index > kl_init and kl_weight < kl_max:
+            kl_weight += kl_step
 
         loss.append(batch_loss.item() / target.size(0))
 
@@ -264,13 +295,13 @@ def run(model_name, model, model_directory, number_of_epochs, learning_rate, log
 class vaeLoss(torch.nn.Module):
     def __init__(self):
         super(vaeLoss, self).__init__()
-        self.mse_loss = torch.nn.MSELoss(reduction='sum')
+        self.mse_loss = torch.nn.MSELoss(reduction='mean')
 
     def forward(self, x_recon, x, mu, logvar):
         loss_MSE = self.mse_loss(x_recon, x)
         loss_KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
-        return loss_MSE + loss_KLD
+        return loss_MSE, loss_KLD
 
 
 def run_autoencoder(
