@@ -25,9 +25,11 @@ class VGG_IN(torch.nn.Module):
         self.features1 = vgg19.features[:layer_index]
         if instance_normalization_function is not None:
             if filename:
-                self.instance_normalization = instance_normalization_function(vgg19.features[layer_index].out_channels, affine=affine, filename=filename)
+                self.instance_normalization = instance_normalization_function(
+                    vgg19.features[layer_index].out_channels, affine=affine, filename=filename)
             else:
-                self.instance_normalization = instance_normalization_function(vgg19.features[layer_index].out_channels, affine=affine)
+                self.instance_normalization = instance_normalization_function(
+                    vgg19.features[layer_index].out_channels, affine=affine)
         self.features2 = vgg19.features[layer_index:]
         self.classifier = create_miniimagenet_classifier()
 
@@ -91,11 +93,13 @@ class VGG_COSINE_SIMILARITY(torch.nn.Module):
 
 
 class VGG_IN_SINGLE_SIMILARITY(VGG_COSINE_SIMILARITY):
-    def __init__(self, layer_index, instance_normalization_function=None, affine=False, pretrained=False, eps=torch.tensor(1e-08), layer_indices=[1, 6, 11, 20, 29]):
+    def __init__(self, layer_index, instance_normalization_function=None,
+                    affine=False, pretrained=False, eps=torch.tensor(1e-08), layer_indices=[1, 6, 11, 20, 29]):
         super(VGG_IN_SINGLE_SIMILARITY, self).__init__(pretrained=pretrained, eps=eps, layer_indices=layer_indices)
         self.features1 = self.vgg19.features[:layer_index]
         if instance_normalization_function is not None:
-            self.instance_normalization = instance_normalization_function(self.vgg19.features[layer_index].out_channels, affine=affine)
+            self.instance_normalization = instance_normalization_function(
+                self.vgg19.features[layer_index].out_channels, affine=affine)
         self.features2 = self.vgg19.features[layer_index:]
 
     def forward(self, x):
@@ -146,9 +150,6 @@ class VGG_BN_SIMILARITY(VGG_COSINE_SIMILARITY):
         x = self.classifier(x)
 
         layer_similarity = torch.stack(similarity_scores, dim=1)
-        # print('layer_similarity.shape')
-        # print(layer_similarity.shape)
-        # print(layer_similarity)
         return x, layer_similarity
 
 
@@ -169,9 +170,6 @@ class VGG_VANILLA_SIMILARITY(VGG_COSINE_SIMILARITY):
         x = self.classifier(x)
 
         layer_similarity = torch.stack(similarity_scores, dim=1)
-        # print('layer_similarity.shape')
-        # print(layer_similarity.shape)
-        # print(layer_similarity)
         return x, layer_similarity
 
 
@@ -533,7 +531,7 @@ def create_vgg19_autoencoder():
 
 
 class VGG_VAE(torch.nn.Module):
-    def __init__(self, pretrained=False):
+    def __init__(self, pretrained=False, num_classes=200, latent_size=4096):
         super(VGG_VAE, self).__init__()
         vgg19 = models.vgg19(pretrained=pretrained)
         self.encoder = torch.nn.ModuleList([])
@@ -541,12 +539,14 @@ class VGG_VAE(torch.nn.Module):
         for layer in vgg19.features:
             self.encoder.append(self.get_encoding_layer(layer))
             self.decoder.insert(0, self.get_decoding_layer(layer))
-        self.classifier = create_miniimagenet_classifier()
 
-        latent_size = 25088
-        self.z_size = 4096
+        feature_size = 25088
+        self.z_size = latent_size
+
+        self.classifier = torch.nn.Linear(in_features=self.z_size, out_features=num_classes, bias=True)
+
         self.encoder_to_latent = torch.nn.Sequential(
-            torch.nn.Linear(latent_size, 10240),
+            torch.nn.Linear(feature_size, 10240),
             torch.nn.BatchNorm1d(10240),
             torch.nn.ReLU(inplace=True),
             torch.nn.Linear(10240, self.z_size),
@@ -564,8 +564,8 @@ class VGG_VAE(torch.nn.Module):
             torch.nn.Linear(self.z_size, 10240),
             torch.nn.BatchNorm1d(10240),
             torch.nn.ReLU(inplace=True),
-            torch.nn.Linear(10240, latent_size),
-            torch.nn.BatchNorm1d(latent_size),
+            torch.nn.Linear(10240, feature_size),
+            torch.nn.BatchNorm1d(feature_size),
             torch.nn.ReLU(inplace=True)
         )
     
@@ -576,9 +576,14 @@ class VGG_VAE(torch.nn.Module):
             if isinstance(layer, torch.nn.MaxPool2d):
                 indices.append(x[1])
                 x = x[0]
-        return x, indices
+        features_shape = x.shape
+        x = x.view(x.size(0), -1)
+        x = self.encoder_to_latent(x)
+        return x, indices, features_shape
     
-    def decode(self, x, indices=None):
+    def decode(self, z, indices=None, feature_shape=None):
+        x = self.latent_to_decoder(z)
+        x = x.view(*feature_shape)
         for layer in self.decoder:
             if isinstance(layer, torch.nn.MaxUnpool2d):
                 if indices is None:
@@ -598,28 +603,27 @@ class VGG_VAE(torch.nn.Module):
         return x
 
     def forward(self, x, classify=True):
-        x, indices = self.encode(x)
+        x, indices, feature_shape = self.encode(x)
         if classify:
-            x = x.view(x.size(0), -1)
             x = self.classifier(x)
             return x
         else:
-            batch_size = x.size(0)
-            channel_size = x.size(1)
-            height_size = x.size(2)
-            width_size = x.size(3)
-            x = x.view(x.size(0), -1)
-            latent = self.encoder_to_latent(x)
-            mu = self.latent_to_mu(latent)
-            logvar = self.latent_to_logvar(latent)
+            mu = self.latent_to_mu(x)
+            logvar = self.latent_to_logvar(x)
             z = self.reparameterize(mu, logvar)
-            x = self.latent_to_decoder(z)
-            x = x.view(batch_size, channel_size, height_size, width_size)
-            x = self.decode(x, indices=indices)
+            x = self.decode(z, indices=indices, feature_shape=feature_shape)
             return x, mu, logvar
     
     def set_mode(self, mode):
         for params in self.encoder.parameters():
+            params.requires_grad = (mode == 'train-autoencoder')
+        for params in self.encoder_to_latent.parameters():
+            params.requires_grad = (mode == 'train-autoencoder')
+        for params in self.latent_to_mu.parameters():
+            params.requires_grad = (mode == 'train-autoencoder')
+        for params in self.latent_to_logvar.parameters():
+            params.requires_grad = (mode == 'train-autoencoder')
+        for params in self.latent_to_decoder.parameters():
             params.requires_grad = (mode == 'train-autoencoder')
         for params in self.decoder.parameters():
             params.requires_grad = (mode == 'train-autoencoder')
@@ -744,14 +748,16 @@ def create_vgg19_vae_support(classification_modelname, autoencoder_modelname, mo
         # load trained classifier
         classification_model_checkpoint_path = pathJoin(model_directory, '{}.ckpt'.format(classification_modelname))
         if os.path.isfile(classification_model_checkpoint_path):
-            classification_model.load_state_dict(torch.load(classification_model_checkpoint_path, map_location=device)['weights'])
+            classification_model.load_state_dict(
+                torch.load(classification_model_checkpoint_path, map_location=device)['weights'])
             classification_model.eval()
         else:
             raise ValueError('Classification Model not found at: {}'.format(classification_model_checkpoint_path))
         # load trained vae
         autoencoder_model_checkpoint_path = pathJoin(model_directory, '{}.ckpt'.format(autoencoder_modelname))
         if os.path.isfile(autoencoder_model_checkpoint_path):
-            autoencoder_model.load_state_dict(torch.load(autoencoder_model_checkpoint_path, map_location=device)['weights'])
+            autoencoder_model.load_state_dict(
+                torch.load(autoencoder_model_checkpoint_path, map_location=device)['weights'])
             autoencoder_model.eval()
         else:
             raise ValueError('Autoencoder Model not found at: {}'.format(autoencoder_model_checkpoint_path))

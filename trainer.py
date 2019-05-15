@@ -73,9 +73,13 @@ def validate(model, dataloader, criterion, logger, device, similarity_weight=Non
         top5_score = score_value(total_top5, total_)
         if (batch_index + 1) % 10 == 0:
             if similarity_weight is not None:
-                logger.debug('Validation Batch {0}/{1}: Top1 Accuracy {2:.4f} Top5 Accuracy {3:.4f} Loss {4:.4f} Classification Loss {5:.4f} Similarity Loss {6:.4f} Similarity Weight {7:.2f}'.format(batch_index + 1, len(dataloader), top1_score, top5_score, mean_loss, mean_classification_loss, mean_similarity_loss, similarity_weight))
+                logger.debug('Validation Batch {}/{}: Top1 Accuracy {:.4f} Top5 Accuracy {:.4f}'.format(
+                    batch_index + 1, len(dataloader), top1_score, top5_score) \
+                    + ' Loss {:.4f} Classification Loss {:.4f} Similarity Loss {:.4f} Similarity Weight {:.2f}'.format(
+                        mean_loss, mean_classification_loss, mean_similarity_loss, similarity_weight))
             else:
-                logger.debug('Validation Batch {0}/{1}: Top1 Accuracy {2:.4f} Top5 Accuracy {3:.4f} Loss {4:.4f}'.format(batch_index + 1, len(dataloader), top1_score, top5_score, mean_loss))
+                logger.debug('Validation Batch {}/{}: Top1 Accuracy {:.4f} Top5 Accuracy {:.4f} Loss {:.4f}'.format(
+                    batch_index + 1, len(dataloader), top1_score, top5_score, mean_loss))
             if DEBUG:
                 break
 
@@ -139,9 +143,13 @@ def train(model, dataloader, criterion, optimizer, logger, device, similarity_we
             
         if (batch_index + 1) % 10 == 0:
             if similarity_weight is not None:
-                logger.debug('Training Batch {0}/{1}: Top1 Accuracy {2:.4f} Top5 Accuracy {3:.4f} Loss {4:.4f} Classification Loss {5:.4f} Similarity Loss {6:.4f} Similarity Weight {7:.2f}'.format(batch_index + 1, len(dataloader), top1_score, top5_score, mean_loss, mean_classification_loss, mean_similarity_loss, similarity_weight))
+                logger.debug('Training Batch {}/{}: Top1 Accuracy {:.4f} Top5 Accuracy {:.4f}'.format(
+                    batch_index + 1, len(dataloader), top1_score, top5_score) \
+                    + 'Loss {:.4f} Classification Loss {:.4f} Similarity Loss {:.4f} Similarity Weight {:.2f}'.format(
+                        mean_loss, mean_classification_loss, mean_similarity_loss, similarity_weight))
             else:
-                logger.debug('Training Batch {0}/{1}: Top1 Accuracy {2:.4f} Top5 Accuracy {3:.4f} Loss {4:.4f}'.format(batch_index + 1, len(dataloader), top1_score, top5_score, mean_loss))
+                logger.debug('Training Batch {}/{}: Top1 Accuracy {:.4f} Top5 Accuracy {:.4f} Loss {:.4f}'.format(
+                    batch_index + 1, len(dataloader), top1_score, top5_score, mean_loss))
             if DEBUG:
                 break
 
@@ -182,7 +190,8 @@ def validate_autoencoder(model, dataloader, criterion, logger, device, filename,
 
         if batch_index == 0:
             n = min(target.size(0), 8)
-            comparison = torch.cat([target[:n], output.view(target.size(0), target.size(1), target.size(2), target.size(3))[:n]])
+            comparison = torch.cat([target[:n],
+                output.view(target.size(0), target.size(1), target.size(2), target.size(3))[:n]])
             save_image(comparison.cpu(), filename, nrow=n, normalize=True)
 
         if (batch_index + 1) % 10 == 0:
@@ -242,29 +251,53 @@ def train_autoencoder(model, dataloader, criterion, optimizer, logger, device, g
     return mean_loss
 
 
-def run(model_name, model, model_directory, number_of_epochs, learning_rate, logger, train_loader, val_loader, device, similarity_weight=None, dataset_names=['miniimagenet', 'stylized-miniimagenet-1.0'], load_data=None):
+def run(model_name, model, model_directory, number_of_epochs, learning_rate, logger,
+        train_loader, val_loader, device, similarity_weight=None,
+        dataset_names=['miniimagenet', 'stylized-miniimagenet-1.0'], load_data=None):
+    checkpoint_path = pathJoin(model_directory, '{}.ckpt'.format(model_name))
+    print(checkpoint_path)
+
+    parameters = model.parameters()
+    if 'autoencoder' in model_name:
+        parameters = model.classifier.parameters()
+    optimizer = torch.optim.SGD(parameters, lr=learning_rate, momentum=0.9)
+
+    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=5, min_lr=1e-5)
+    
+    if os.path.isfile(checkpoint_path):
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+
+        last_epoch = checkpoint['epoch']
+        best_validation_accuracy = checkpoint['validation_top5_accuracy']
+        model.load_state_dict(checkpoint['weights'])
+        optimizer.load_state_dict(checkpoint['optimizer_weights'])
+    else:
+        last_epoch = 0
+        best_validation_accuracy = -1.0
+    last_epoch += 1
+    logger.info('Training model {} from epoch {}'.format(checkpoint_path, last_epoch))
+
     logger.info('Epochs {}'.format(number_of_epochs))
     logger.info('Batch Size {}'.format(train_loader.batch_size))
     logger.info('Number of Workers {}'.format(train_loader.num_workers))
-    logger.info('Optimizer {}'.format('SGD w/ Momentum'))
+    logger.info('Optimizer {}'.format(optimizer))
     logger.info('Learning Rate {}'.format(learning_rate))
     logger.info('Similarity Weight {}'.format(similarity_weight))
     logger.info('Device {}'.format(device))
 
     criterion = torch.nn.CrossEntropyLoss()
-    parameters = model.parameters()
-    if 'autoencoder' in model_name:
-        parameters = model.classifier.parameters()
-    optimizer = torch.optim.SGD(parameters, lr=learning_rate, momentum=0.9)
-    
-    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=5, min_lr=1e-5, verbose=True)
-    
-    best_validation_accuracy = -1.0
 
-    for epoch in range(1, number_of_epochs + 1):
-        train_top1_accuracy, train_top5_accuracy, train_loss = train(model, train_loader, criterion, optimizer, logger, device, similarity_weight)
-        validation_top1_accuracy, validation_top5_accuracy, validation_loss = validate(model, val_loader, criterion, logger, device, similarity_weight)
-        logger.info('Epoch {0}: Train: Loss: {1:.4f} Top1 Accuracy: {2:.4f} Top5 Accuracy: {3:.4f} Validation: Loss: {4:.4f} Top1 Accuracy: {5:.4f} Top5 Accuracy: {6:.4f}'.format(epoch, train_loss, train_top1_accuracy, train_top5_accuracy, validation_loss, validation_top1_accuracy, validation_top5_accuracy))
+    for epoch in range(last_epoch, number_of_epochs + 1):
+        train_top1_accuracy, train_top5_accuracy, train_loss = train(
+            model, train_loader, criterion, optimizer,
+            logger, device, similarity_weight)
+        validation_top1_accuracy, validation_top5_accuracy, validation_loss = validate(
+            model, val_loader, criterion,
+            logger, device, similarity_weight)
+        logger.info('Epoch {}: Train: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(
+            epoch, train_loss, train_top1_accuracy, train_top5_accuracy) \
+            + ' Validation: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(
+                validation_loss, validation_top1_accuracy, validation_top5_accuracy))
 
         lr_scheduler.step(validation_loss)
 
@@ -287,9 +320,12 @@ def run(model_name, model, model_directory, number_of_epochs, learning_rate, log
 
     logger.info('Epoch {}'.format(checkpoint['epoch']))
 
-    evaluate_model(model_name, model, load_data, dataset_names, logger.info, similarity_weight is not None, device)
-    logger.info('Train: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(checkpoint['train_loss'], checkpoint['train_top1_accuracy'], checkpoint['train_top5_accuracy']))
-    logger.info('Validation: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(checkpoint['validation_loss'], checkpoint['validation_top1_accuracy'], checkpoint['validation_top5_accuracy']))
+    evaluate_model(model_name, model, load_data, dataset_names,
+        logger.info, similarity_weight is not None, device)
+    logger.info('Train: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(
+        checkpoint['train_loss'], checkpoint['train_top1_accuracy'], checkpoint['train_top5_accuracy']))
+    logger.info('Validation: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(
+        checkpoint['validation_loss'], checkpoint['validation_top1_accuracy'], checkpoint['validation_top5_accuracy']))
 
 
 class vaeLoss(torch.nn.Module):
@@ -299,7 +335,7 @@ class vaeLoss(torch.nn.Module):
 
     def forward(self, x_recon, x, mu, logvar):
         loss_MSE = self.mse_loss(x_recon, x)
-        loss_KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        loss_KLD = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
 
         return loss_MSE, loss_KLD
 
@@ -312,22 +348,38 @@ def run_autoencoder(
         load_data=None, should_train_autoencoder=True
     ):
     if should_train_autoencoder:
+        checkpoint_path = pathJoin(model_directory, '{}.ckpt'.format(model_name))
+        print(checkpoint_path)
+
+        autoencoder_parameters = list(model.encoder.parameters()) + list(model.encoder_to_latent.parameters()) \
+            + list(model.latent_to_mu.parameters()) + list(model.latent_to_logvar.parameters()) \
+            + list(model.latent_to_decoder.parameters()) + list(model.decoder.parameters())
+        optimizer = torch.optim.Adam(autoencoder_parameters, lr=autoencoder_learning_rate)
+        
+        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=5, min_lr=1e-5)
+
+        if os.path.isfile(checkpoint_path):
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+
+            last_epoch = checkpoint['epoch']
+
+            model.load_state_dict(checkpoint['weights'])
+            optimizer.load_state_dict(checkpoint['optimizer_weights'])
+        else:
+            last_epoch = 0
+        last_epoch += 1
+        logger.info('Training model {} from epoch {}'.format(checkpoint_path, last_epoch))
+
         logger.info('Epochs {}'.format(number_of_epochs))
         logger.info('Batch Size {}'.format(pair_train_loader.batch_size))
         logger.info('Number of Workers {}'.format(pair_train_loader.num_workers))
-        logger.info('Optimizer {}'.format('SGD w/ Momentum'))
+        logger.info('Optimizer {}'.format(optimizer))
         logger.info('Autoencoder Learning Rate {}'.format(autoencoder_learning_rate))
         logger.info('Device {}'.format(device))
 
         criterion = vaeLoss()
-        autoencoder_parameters = list(model.encoder.parameters()) + list(model.decoder.parameters())
-        optimizer = torch.optim.Adam(autoencoder_parameters, lr=autoencoder_learning_rate)
-        
-        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=5, min_lr=1e-5, verbose=True)
-        
-        best_validation_accuracy = -1.0
 
-        for epoch in range(1, number_of_epochs + 1):
+        for epoch in range(last_epoch, number_of_epochs + 1):
             model.set_mode('train-autoencoder')
             train_loss = train_autoencoder(model, pair_train_loader, criterion, optimizer, logger, device)
             model.set_mode('eval')
@@ -337,12 +389,11 @@ def run_autoencoder(
             validation_loss = validate_autoencoder(model, pair_val_loader, criterion, logger, device, images_filename)
             with torch.no_grad():
                 z = torch.randn(64, model.z_size).to(device)
-                x = model.latent_to_decoder(z)
-                x = x.view(64, 512, 7, 7)
-                sample = model.decode(x).cpu()
+                sample = model.decode(z, feature_shape=(64, 512, 7, 7)).cpu()
                 sample_filename = pathJoin(images_directory, '{}_epoch_{}_samples.png'.format(model_name, epoch))
                 save_image(sample.view(64, 3, 224, 224), sample_filename, normalize=True)
-            logger.info('Epoch {0}: Train: Loss: {1:.4f} Validation: Loss: {2:.4f}'.format(epoch, train_loss, validation_loss))
+            logger.info('Epoch {}: Train: Loss: {:.4f} Validation: Loss: {:.4f}'.format(
+                epoch, train_loss, validation_loss))
 
             lr_scheduler.step(validation_loss)
 
@@ -361,7 +412,8 @@ def run_autoencoder(
 
     # train classifier
     model.set_mode('train-classifier')
-    run(model_name, model, model_directory, number_of_epochs, classifier_learning_rate, logger, train_loader, val_loader, device, dataset_names=dataset_names, load_data=load_data)
+    run(model_name, model, model_directory, number_of_epochs, classifier_learning_rate,
+        logger, train_loader, val_loader, device, dataset_names=dataset_names, load_data=load_data)
 
     if should_train_autoencoder:
         logger.info('Train: Loss: {:.4f}'.format(checkpoint['train_loss']))
@@ -390,7 +442,10 @@ def perf(model_list, model_directory, dataset_names, device, load_data=None, onl
 
             model.eval()
 
-            print('Epoch: {} Validation: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f} Train: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(epoch, validation_loss, validation_top1_accuracy, validation_top5_accuracy, train_loss, train_top1_accuracy, train_top5_accuracy))
+            print('Epoch: {} Validation: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(
+                epoch, validation_loss, validation_top1_accuracy, validation_top5_accuracy) \
+                + ' Train: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(
+                    train_loss, train_top1_accuracy, train_top5_accuracy))
 
             if not only_exists:
                 evaluate_model(model_name, model, load_data, dataset_names, print, 'similarity' in model_name, device)

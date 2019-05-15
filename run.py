@@ -3,6 +3,7 @@
 
 # native
 import os
+import sys
 
 # modules
 from utils import *
@@ -117,6 +118,20 @@ def load_data(dataset_name, split, train_transforms=train_transforms, test_trans
 
     return dataset, loader
 
+def load_bilateral_data(dataset_name, split,
+        train_transforms=bilateral_train_transforms, test_transforms=bilateral_test_transforms):
+    dataset_path = os.path.join(config.rootPath, 'datasets', dataset_name)
+
+    istrain = split == 'train'
+    transforms = train_transforms if istrain else test_transforms
+
+    dataset = MiniImageNetDataset(dataset_path, split=split, transforms=transforms)#raw_transforms)
+    loader = DataLoader(dataset, batch_size=config.batchSize, shuffle=istrain, num_workers=config.numberOfWorkers)
+
+    print('{} dataset {} has {} datapoints in {} batches'.format(split, dataset_name, len(dataset), len(loader)))
+
+    return dataset, loader
+
 def load_pair_data(dataset_names, split, target_type):
     input_dataset_path = os.path.join(config.rootPath, 'datasets', dataset_names[0])
     target_dataset_path = os.path.join(config.rootPath, 'datasets', dataset_names[1])
@@ -124,10 +139,12 @@ def load_pair_data(dataset_names, split, target_type):
     istrain = split == 'train'
     target_transforms = highpass_transforms if target_type == 'highpass' else pair_transforms
 
-    dataset = MiniImageNetPairDataset(input_dataset_path, target_dataset_path, split=split, transforms=pair_transforms, target_type=target_type, target_transforms=target_transforms)
+    dataset = MiniImageNetPairDataset(input_dataset_path, target_dataset_path, split=split,
+        transforms=pair_transforms, target_type=target_type, target_transforms=target_transforms)
     loader = DataLoader(dataset, batch_size=config.batchSize, shuffle=istrain, num_workers=config.numberOfWorkers)
 
-    print('{} dataset pair ({}, {}) has {} datapoints in {} batches'.format(split, dataset_names[0], dataset_names[1], len(dataset), len(loader)))
+    print('{} dataset pair ({}, {}) has {} datapoints in {} batches'.format(split, dataset_names[0], dataset_names[1],
+        len(dataset), len(loader)))
 
     return dataset, loader
 
@@ -137,8 +154,10 @@ original_val_dataset, original_val_loader = load_data('miniimagenet', 'val')
 stylized_train_dataset, stylized_train_loader = load_data('stylized-miniimagenet-1.0', 'train')
 stylized_val_dataset, stylized_val_loader = load_data('stylized-miniimagenet-1.0', 'val')
 
-bilateral_original_train_dataset, bilateral_original_train_loader = load_data('miniimagenet', 'train', train_transforms=bilateral_train_transforms, test_transforms=bilateral_test_transforms)
-bilateral_original_val_dataset, bilateral_original_val_loader = load_data('miniimagenet', 'val', train_transforms=bilateral_train_transforms, test_transforms=bilateral_test_transforms)
+bilateral_original_train_dataset, bilateral_original_train_loader = load_data('miniimagenet', 'train',
+    train_transforms=bilateral_train_transforms, test_transforms=bilateral_test_transforms)
+bilateral_original_val_dataset, bilateral_original_val_loader = load_data('miniimagenet', 'val',
+    train_transforms=bilateral_train_transforms, test_transforms=bilateral_test_transforms)
 
 for dataset, loader in [
     (original_train_dataset, original_train_loader),
@@ -207,7 +226,16 @@ supported_models = {
     'vgg19_in_affine_single_tune_all_bilateral': create_vgg19_in_affine_single_tune_all,
     'resnet50_tune_fc_0.01_bilateral': create_resnet50_bn_tune_fc,
     'resnet50_bin_tune_fc_bilateral': create_resnet50_bin_tune_fc,
-    'vgg19_in_single_tune_all_vae_highpass': create_vgg19_vae_support('vgg19_in_single_tune_all', 'vgg19_variational_autoencoder_highpass', model_directory, config.device)
+    'vgg19_in_single_tune_all_vae_highpass': create_vgg19_vae_support(
+        'vgg19_in_single_tune_all', 'vgg19_variational_autoencoder_highpass',
+        model_directory, config.device),
+    'vgg19_bn_in_single_tune_all_confirm': create_vgg19_bn_in_single_tune_all,
+    'vgg19_bn_in_single_tune_all_bilateral': create_vgg19_bn_in_single_tune_all,
+    'vgg19_in_all_tune_all_confirm': create_vgg19_in_all_tune_all,
+    'vgg19_in_all_tune_all_bilateral': create_vgg19_in_all_tune_all,
+    'vgg19_in_bs_all_tune_all_confirm': create_vgg19_in_bs_all_tune_all,
+    'vgg19_in_bs_all_tune_all_bilateral': create_vgg19_in_bs_all_tune_all,
+    'vgg19_variational_autoencoder_mean_loss_min': create_vgg19_variational_autoencoder
 }
 
 SKIP_AUTOENCODER_TRAINING = [
@@ -216,7 +244,8 @@ SKIP_AUTOENCODER_TRAINING = [
     'vgg19_variational_autoencoder_highpass'
 ]
 
-models = {k:v for (k,v) in supported_models.items() if k in (config.model if config.model is not None else supported_models)}
+models = {k:v for (k,v) in supported_models.items()
+            if k in (config.model if config.model is not None else supported_models)}
 assert len(models.keys()) > 0, 'Please specify a model'
 
 sanity(models, original_train_loader, config.device)
@@ -233,12 +262,15 @@ if config.train:
 
         # original
         logger = create_logger(log_directory, model_name)
+        logger.info(' '.join(sys.argv))
         logger.info('Model Name {}'.format(model_name))
         model = models[model_name]()
         if 'autoencoder' in model_name:
             target_type = model_name.split('_')[-1]
-            _, pair_train_loader = load_pair_data(['stylized-miniimagenet-0.0', 'stylized-miniimagenet-1.0'], 'train', target_type)
-            _, pair_val_loader = load_pair_data(['stylized-miniimagenet-0.0', 'stylized-miniimagenet-1.0'], 'val', target_type)
+            _, pair_train_loader = load_pair_data(['stylized-miniimagenet-0.0', 'stylized-miniimagenet-1.0'],
+                                        'train', target_type)
+            _, pair_val_loader = load_pair_data(['stylized-miniimagenet-0.0', 'stylized-miniimagenet-1.0'],
+                                        'val', target_type)
             run_autoencoder(
                 model_name, model,
                 model_directory,
@@ -279,5 +311,9 @@ if config.train:
 
 # Check Performance
 
+print('normal eval')
 perf(models, model_directory, dataset_names, config.device, load_data=load_data, only_exists=config.exists)
+
+print('bilateral eval')
+perf(models, model_directory, dataset_names, config.device, load_data=load_bilateral_data, only_exists=config.exists)
 
