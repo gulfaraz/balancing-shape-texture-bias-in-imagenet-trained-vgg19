@@ -28,7 +28,7 @@ class BaseDataset(Dataset):
         raise NotImplementedError('Function "loadDataset" is not implemented')
 
 
-class MiniImageNetDataset(BaseDataset):
+class ImageNet200Dataset(BaseDataset):
 
     def __init__(self, directory, split='train', transforms=None):
         super().__init__(directory, split, transforms)
@@ -195,7 +195,7 @@ class ImageNetDataset(BaseDataset):
         return classes
 
 
-class MiniImageNetPairDataset(BaseDataset):
+class ImageNet200PairDataset(BaseDataset):
 
     def __init__(self, input_directory, target_directory, split='train', transforms=None, target_type=None, target_transforms=None):
         assert target_type in ['min', 'smin', 'highpass', 'swap', 'mix'], 'Unknown target type ({}) for pair dataset'.format(target_type)
@@ -323,6 +323,30 @@ class DeNormalize(object):
             t.mul_(s).add_(m)
             # The normalize code -> t.sub_(m).div_(s)
         return tensor
+
+
+class CelebADataset(BaseDataset):
+
+    def __init__(self, root_directory, split='train', transforms=None):
+        self.root_directory = root_directory
+        super().__init__(root_directory, split, transforms)
+        self.INDEX_IMAGE = 1
+        self.INDEX_TARGET_IMAGE = 1
+
+    def loadImage(self, filepath):
+        return Image.open(filepath)
+
+    def loadDatapoint(self, idx):
+        input_filepath = self.datapoints[idx]
+        input_image = self.loadImage(input_filepath)
+
+        if self.transforms:
+            input_image = self.transforms(input_image)
+
+        return (input_filepath, input_image)
+
+    def loadDataset(self):
+        return [ pathJoin(self.root_directory, filename) for filename in os.listdir(self.root_directory) ]
 
 
 def find_normalization_values(dataset, image_index):

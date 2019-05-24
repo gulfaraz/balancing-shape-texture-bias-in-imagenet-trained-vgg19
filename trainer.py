@@ -1,3 +1,5 @@
+# In[1]: Load Libraries
+
 import os
 import torch
 import numpy as np
@@ -7,6 +9,8 @@ from torchvision.utils import save_image
 
 DEBUG = False
 
+# In[2]: Supporting Functions
+
 def calculate_similarity_loss(similarity, kernel_sizes=[64., 128., 256., 512., 512.]):
     number_of_kernels = torch.tensor(kernel_sizes)
     style_weights = torch.tensor([1e3/n**2 for n in number_of_kernels])
@@ -14,18 +18,42 @@ def calculate_similarity_loss(similarity, kernel_sizes=[64., 128., 256., 512., 5
     return weighted_similarity.mean() + (number_of_kernels * style_weights).sum()
 
 
-def sanity(model_list, loader, device):
-    for model_type in model_list:
-        print(model_type)
-        model = model_list[model_type]()
-        model.train()
-        for batch in loader:
-            index_image = loader.dataset.INDEX_IMAGE
-            model(batch[index_image].to(device))
-            break
-        del model
-        torch.cuda.empty_cache()
+def calculate_reconstruction_loss(x, x_recon, distribution='gaussian'):
+    batch_size = x.size(0)
+    assert batch_size != 0
+    sigmoid = torch.nn.Sigmoid()
+    mse_loss = torch.nn.MSELoss(reduction='sum')
+    bce_logit_loss = torch.nn.BCEWithLogitsLoss(reduction='sum')
 
+    if distribution == 'bernoulli':
+        recon_loss = bce_logit_loss(x_recon, x).div(batch_size)
+    elif distribution == 'gaussian':
+        x_recon = sigmoid(x_recon)
+        # print('x_recon {}'.format(x_recon.shape))
+        # print('x {}'.format(x.shape))
+        recon_loss = mse_loss(x_recon, x).div(batch_size)
+    else:
+        recon_loss = None
+
+    return recon_loss
+
+
+def calculate_kl_divergence(mu, logvar):
+    batch_size = mu.size(0)
+    assert batch_size != 0
+    if mu.data.ndimension() == 4:
+        mu = mu.view(mu.size(0), mu.size(1))
+    if logvar.data.ndimension() == 4:
+        logvar = logvar.view(logvar.size(0), logvar.size(1))
+
+    klds = -0.5*(1 + logvar - mu.pow(2) - logvar.exp())
+    total_kld = klds.sum(1).mean(0, True)
+    dimension_wise_kld = klds.mean(0)
+    mean_kld = klds.mean(1).mean(0, True)
+
+    return total_kld, dimension_wise_kld, mean_kld
+
+# In[3]: Classifier
 
 def validate(model, dataloader, criterion, logger, device, similarity_weight=None):
     logger.debug('Validation Start')
@@ -157,123 +185,26 @@ def train(model, dataloader, criterion, optimizer, logger, device, similarity_we
     return top1_score, top5_score, mean_loss
 
 
-def validate_autoencoder(model, dataloader, criterion, logger, device, filename, habits_lambda=0.2):
-    logger.debug('Validation Start')
-    model.eval()
-
-    loss = []
-
-    kl_init = 0.01 * len(dataloader)
-    kl_weight = 0.0
-    kl_max = 1.0
-    kl_step = (kl_max - kl_weight) / (len(dataloader) // 2)
-
-    logger.debug('KL: INIT: {} WEIGHT: {} MAX: {} STEP: {}'.format(kl_init, kl_weight, kl_max, kl_step))
-
-    for batch_index, batch in enumerate(dataloader):
-        output, mu, logvar = model(batch[dataloader.dataset.INDEX_IMAGE].to(device), classify=False)
-        target = batch[dataloader.dataset.INDEX_TARGET_IMAGE].to(device)
-
-        # loss
-        mse, kl = criterion(output, target, mu, logvar)
-        clamp_kl = torch.clamp(kl.mean(), min=habits_lambda).squeeze()
-        effective_kl = clamp_kl * kl_weight
-        batch_loss = mse + effective_kl
-        logger.debug('BATCH LOSS: {} MSE: {} KL-EFFECTIVE: {} KL-CLAMPED: {} KL: {} KL-WEIGHT: {}'.format(
-            batch_loss.item(), mse.item(), effective_kl.item(), clamp_kl.item(), kl.item(), kl_weight))
-
-        if batch_index > kl_init and kl_weight < kl_max:
-            kl_weight += kl_step
-
-        loss.append(batch_loss.item() / target.size(0))
-        mean_loss = np.mean(loss)
-
-        if batch_index == 0:
-            n = min(target.size(0), 8)
-            comparison = torch.cat([target[:n],
-                output.view(target.size(0), target.size(1), target.size(2), target.size(3))[:n]])
-            save_image(comparison.cpu(), filename, nrow=n, normalize=True)
-
-        if (batch_index + 1) % 10 == 0:
-            logger.debug('Validation Batch {}/{}: Loss {:.4f}'.format(batch_index + 1, len(dataloader), mean_loss))
-            if DEBUG:
-                break
-
-    logger.debug('Validation End')
-    return mean_loss
-
-
-def train_autoencoder(model, dataloader, criterion, optimizer, logger, device, grad_clip_norm_value=50, habits_lambda=0.2):
-    logger.debug('Training Start')
-    model.train()
-
-    loss = []
-
-    kl_init = 0.01 * len(dataloader)
-    kl_weight = 0.0
-    kl_max = 1.0
-    kl_step = (kl_max - kl_weight) / (len(dataloader) // 2)
-
-    logger.debug('KL: INIT: {} WEIGHT: {} MAX: {} STEP: {}'.format(kl_init, kl_weight, kl_max, kl_step))
-
-    for batch_index, batch in enumerate(dataloader):
-        optimizer.zero_grad()
-        output, mu, logvar = model(batch[dataloader.dataset.INDEX_IMAGE].to(device), classify=False)
-        target = batch[dataloader.dataset.INDEX_TARGET_IMAGE].to(device)
-
-        # loss
-        mse, kl = criterion(output, target, mu, logvar)
-        clamp_kl = torch.clamp(kl.mean(), min=habits_lambda).squeeze()
-        effective_kl = clamp_kl * kl_weight
-        batch_loss = mse + effective_kl
-        logger.debug('BATCH LOSS: {} MSE: {} KL-EFFECTIVE: {} KL-CLAMPED: {} KL: {} KL-WEIGHT: {}'.format(
-            batch_loss.item(), mse.item(), effective_kl.item(), clamp_kl.item(), kl.item(), kl_weight))
-
-        if batch_index > kl_init and kl_weight < kl_max:
-            kl_weight += kl_step
-
-        loss.append(batch_loss.item() / target.size(0))
-
-        # backprop
-        batch_loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm_value)
-        optimizer.step()
-        
-        # use mean metrics
-        mean_loss = np.mean(loss)
-            
-        if (batch_index + 1) % 10 == 0:
-            logger.debug('Training Batch {}/{}: Loss {:.4f}'.format(batch_index + 1, len(dataloader), mean_loss))
-            if DEBUG:
-                break
-
-    logger.debug('Training End')
-    return mean_loss
-
-
 def run(model_name, model, model_directory, number_of_epochs, learning_rate, logger,
         train_loader, val_loader, device, similarity_weight=None,
         dataset_names=['miniimagenet', 'stylized-miniimagenet-1.0'], load_data=None):
     checkpoint_path = pathJoin(model_directory, '{}.ckpt'.format(model_name))
     print(checkpoint_path)
 
-    parameters = model.parameters()
-    if 'autoencoder' in model_name:
-        parameters = model.classifier.parameters()
-    optimizer = torch.optim.SGD(parameters, lr=learning_rate, momentum=0.9)
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
 
     lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=5, min_lr=1e-5)
     
+    last_epoch = 0
+    best_validation_accuracy = -1.0
+
     if os.path.isfile(checkpoint_path):
         checkpoint = torch.load(checkpoint_path, map_location=device)
-
         last_epoch = checkpoint['epoch']
         best_validation_accuracy = checkpoint['validation_top5_accuracy']
         model.load_state_dict(checkpoint['weights'])
         optimizer.load_state_dict(checkpoint['optimizer_weights'])
-    else:
-        last_epoch = 0
-        best_validation_accuracy = -1.0
+
     last_epoch += 1
     logger.info('Training model {} from epoch {}'.format(checkpoint_path, last_epoch))
 
@@ -328,99 +259,161 @@ def run(model_name, model, model_directory, number_of_epochs, learning_rate, log
         checkpoint['validation_loss'], checkpoint['validation_top1_accuracy'], checkpoint['validation_top5_accuracy']))
 
 
-class vaeLoss(torch.nn.Module):
-    def __init__(self):
-        super(vaeLoss, self).__init__()
-        self.mse_loss = torch.nn.MSELoss(reduction='mean')
+# In[4]: Autoencoder
 
-    def forward(self, x_recon, x, mu, logvar):
-        loss_MSE = self.mse_loss(x_recon, x)
-        loss_KLD = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
+def validate_autoencoder(model, loader, logger, device, filename, beta):
+    logger.debug('Validation Start')
+    model.eval()
 
-        return loss_MSE, loss_KLD
+    loss = []
 
+    for batch_index, batch in enumerate(loader):
+        batch_input = batch[loader.dataset.INDEX_IMAGE].to(device)
+        batch_target = batch[loader.dataset.INDEX_TARGET_IMAGE].to(device)
+        batch_output, mu, logvar = model(batch_input)
 
-def run_autoencoder(
-        model_name, model, model_directory,
-        number_of_epochs, autoencoder_learning_rate, classifier_learning_rate,
-        logger, pair_train_loader, pair_val_loader, train_loader, val_loader,
-        device, dataset_names=['miniimagenet', 'stylized-miniimagenet-1.0'],
-        load_data=None, should_train_autoencoder=True
-    ):
-    if should_train_autoencoder:
-        checkpoint_path = pathJoin(model_directory, '{}.ckpt'.format(model_name))
-        print(checkpoint_path)
+        # loss
+        reconstruction_loss = calculate_reconstruction_loss(batch_target, batch_output)
+        total_kld, dim_wise_kld, mean_kld = calculate_kl_divergence(mu, logvar)
+        batch_loss = reconstruction_loss + (beta * total_kld)
 
-        autoencoder_parameters = list(model.encoder.parameters()) + list(model.encoder_to_latent.parameters()) \
-            + list(model.latent_to_mu.parameters()) + list(model.latent_to_logvar.parameters()) \
-            + list(model.latent_to_decoder.parameters()) + list(model.decoder.parameters())
-        optimizer = torch.optim.Adam(autoencoder_parameters, lr=autoencoder_learning_rate)
+        logger.debug('Batch Loss: {} Reconstruction Loss: {:.4f} KL-Divergence: {:.4f} Mean-KLD: {:.4f}'.format(
+            batch_loss.item(), reconstruction_loss.item(), total_kld.item(), mean_kld.item()))
+
+        loss.append(batch_loss.item())
+
+        mean_loss = np.mean(loss)
+
+        if batch_index == 0:
+            n = min(batch_target.size(0), 8)
+            comparison = torch.cat([batch_target[:n], batch_output.view(*batch_target.shape)[:n]])
+            save_image(comparison.cpu(), filename, nrow=n, normalize=False)
+
+        if (batch_index + 1) % 10 == 0:
+            logger.debug('Validation Batch {}/{}: Loss {:.4f}'.format(batch_index + 1, len(loader), mean_loss))
+            if DEBUG:
+                break
+
+    logger.debug('Validation End')
+    return mean_loss
+
+def train_autoencoder(model, loader, optimizer, logger, device, beta, grad_clip_norm_value=50):
+    logger.debug('Training Start')
+    model.train()
+
+    loss = []
+
+    for batch_index, batch in enumerate(loader):
+        optimizer.zero_grad()
+        batch_input = batch[loader.dataset.INDEX_IMAGE].to(device)
+        batch_target = batch[loader.dataset.INDEX_TARGET_IMAGE].to(device)
+        batch_output, mu, logvar = model(batch_input)
+
+        # loss
+        reconstruction_loss = calculate_reconstruction_loss(batch_target, batch_output)
+        total_kld, dim_wise_kld, mean_kld = calculate_kl_divergence(mu, logvar)
+        batch_loss = reconstruction_loss + (beta * total_kld)
+
+        logger.debug('Batch Loss: {} Reconstruction Loss: {:.4f} KL-Divergence: {:.4f} Mean-KLD: {:.4f}'.format(
+            batch_loss.item(), reconstruction_loss.item(), total_kld.item(), mean_kld.item()))
+
+        loss.append(batch_loss.item())
+
+        # backprop
+        batch_loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm_value)
+        optimizer.step()
         
-        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=5, min_lr=1e-5)
+        # use mean metrics
+        mean_loss = np.mean(loss)
+            
+        if (batch_index + 1) % 10 == 0:
+            logger.debug('Training Batch {}/{}: Loss {:.4f}'.format(batch_index + 1, len(loader), mean_loss))
+            if DEBUG:
+                break
 
-        if os.path.isfile(checkpoint_path):
-            checkpoint = torch.load(checkpoint_path, map_location=device)
-
-            last_epoch = checkpoint['epoch']
-
-            model.load_state_dict(checkpoint['weights'])
-            optimizer.load_state_dict(checkpoint['optimizer_weights'])
-        else:
-            last_epoch = 0
-        last_epoch += 1
-        logger.info('Training model {} from epoch {}'.format(checkpoint_path, last_epoch))
-
-        logger.info('Epochs {}'.format(number_of_epochs))
-        logger.info('Batch Size {}'.format(pair_train_loader.batch_size))
-        logger.info('Number of Workers {}'.format(pair_train_loader.num_workers))
-        logger.info('Optimizer {}'.format(optimizer))
-        logger.info('Autoencoder Learning Rate {}'.format(autoencoder_learning_rate))
-        logger.info('Device {}'.format(device))
-
-        criterion = vaeLoss()
-
-        for epoch in range(last_epoch, number_of_epochs + 1):
-            model.set_mode('train-autoencoder')
-            train_loss = train_autoencoder(model, pair_train_loader, criterion, optimizer, logger, device)
-            model.set_mode('eval')
-            images_directory = pathJoin('vae-images')
-            os.makedirs(images_directory, exist_ok=True)
-            images_filename = pathJoin(images_directory, '{}_epoch_{}.png'.format(model_name, epoch))
-            validation_loss = validate_autoencoder(model, pair_val_loader, criterion, logger, device, images_filename)
-            with torch.no_grad():
-                z = torch.randn(64, model.z_size).to(device)
-                sample = model.decode(z, feature_shape=(64, 512, 7, 7)).cpu()
-                sample_filename = pathJoin(images_directory, '{}_epoch_{}_samples.png'.format(model_name, epoch))
-                save_image(sample.view(64, 3, 224, 224), sample_filename, normalize=True)
-            logger.info('Epoch {}: Train: Loss: {:.4f} Validation: Loss: {:.4f}'.format(
-                epoch, train_loss, validation_loss))
-
-            lr_scheduler.step(validation_loss)
-
-            logger.debug('Saving new weights')
-            os.makedirs(model_directory, exist_ok=True)
-            checkpoint = {
-                'epoch': epoch,
-                'train_loss': train_loss,
-                'validation_loss': validation_loss,
-                'weights': model.state_dict(),
-                'optimizer_weights': optimizer.state_dict()
-            }
-            torch.save(checkpoint, pathJoin(model_directory, '{}.ckpt'.format(model_name)))
-
-        logger.info('Epoch {}'.format(checkpoint['epoch']))
-
-    # train classifier
-    model.set_mode('train-classifier')
-    run(model_name, model, model_directory, number_of_epochs, classifier_learning_rate,
-        logger, train_loader, val_loader, device, dataset_names=dataset_names, load_data=load_data)
-
-    if should_train_autoencoder:
-        logger.info('Train: Loss: {:.4f}'.format(checkpoint['train_loss']))
-        logger.info('Validation: Loss: {:.4f}'.format(checkpoint['validation_loss']))
+    logger.debug('Training End')
+    return mean_loss
 
 
-def perf(model_list, model_directory, dataset_names, device, load_data=None, only_exists=None):
+def run_autoencoder(model_name, model, model_directory, number_of_epochs,
+    learning_rate, logger, train_loader, val_loader, device, beta, image_size, image_directory=pathJoin('betavaeresults')):
+    checkpoint_path = pathJoin(model_directory, '{}.ckpt'.format(model_name))
+    print(checkpoint_path)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+    last_epoch = 0
+
+    if os.path.isfile(checkpoint_path):
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        last_epoch = checkpoint['epoch']
+        model.load_state_dict(checkpoint['weights'])
+        optimizer.load_state_dict(checkpoint['optimizer_weights'])
+
+    last_epoch += 1
+
+    logger.info('Training model {} from epoch {}'.format(checkpoint_path, last_epoch))
+    logger.info('Epochs {}'.format(number_of_epochs))
+    logger.info('Batch Size {}'.format(train_loader.batch_size))
+    logger.info('Number of Workers {}'.format(train_loader.num_workers))
+    logger.info('Optimizer {}'.format(optimizer))
+    logger.info('Learning Rate {}'.format(learning_rate))
+    logger.info('Device {}'.format(device))
+
+    image_directory = pathJoin(image_directory, model_name)
+    os.makedirs(image_directory, exist_ok=True)
+
+    for epoch in range(last_epoch, number_of_epochs + 1):
+        train_loss = train_autoencoder(model, train_loader, optimizer, logger, device, beta)
+
+        image_filename = pathJoin(image_directory, 'reconstructed_epoch_{}.png'.format(epoch))
+
+        validation_loss = validate_autoencoder(model, val_loader, logger, device, image_filename, beta)
+
+        with torch.no_grad():
+            z = torch.randn(64, model.z_dim).to(device)
+            sample = model._decode(z).cpu()
+            sample_filename = pathJoin(image_directory, 'generated_epoch_{}.png'.format(epoch))
+            save_image(sample.view(64, 3, image_size, image_size), sample_filename, normalize=False)
+        logger.info('Epoch {}: Train: Loss: {:.4f} Validation: Loss: {:.4f}'.format(
+            epoch, train_loss, validation_loss))
+
+        explore_betavae(model_name, model, image_directory, epoch, val_loader, device)
+
+        logger.debug('Saving new weights')
+        os.makedirs(model_directory, exist_ok=True)
+        checkpoint = {
+            'epoch': epoch,
+            'train_loss': train_loss,
+            'validation_loss': validation_loss,
+            'weights': model.state_dict(),
+            'optimizer_weights': optimizer.state_dict()
+        }
+        torch.save(checkpoint, pathJoin(model_directory, '{}.ckpt'.format(model_name)))
+
+    logger.info('Epoch {}'.format(checkpoint['epoch']))
+    logger.info('Train: Loss: {:.4f}'.format(checkpoint['train_loss']))
+    logger.info('Validation: Loss: {:.4f}'.format(checkpoint['validation_loss']))
+
+
+# In[5]: Non-Training
+
+def sanity(model_list, loader, pair_loader, device):
+    for model_name in model_list:
+        print(model_name)
+        model = model_list[model_name]()
+        model.train()
+        dataloader = pair_loader if 'vae' in model_name else loader
+        for batch in dataloader:
+            index_image = dataloader.dataset.INDEX_IMAGE
+            model(batch[index_image].to(device))
+            break
+        del model
+        torch.cuda.empty_cache()
+
+
+def perf(model_list, model_directory, dataset_names, device, load_data=None, load_bilateral_data=None, only_exists=None):
     for model_name in model_list:
         print(model_name)
         model = model_list[model_name]()
@@ -432,12 +425,12 @@ def perf(model_list, model_directory, dataset_names, device, load_data=None, onl
             checkpoint = torch.load(checkpoint_path, map_location=device)
 
             epoch = checkpoint['epoch']
-            train_top1_accuracy = checkpoint['train_top1_accuracy']
-            train_top5_accuracy = checkpoint['train_top5_accuracy']
             train_loss = checkpoint['train_loss']
-            validation_top1_accuracy = checkpoint['validation_top1_accuracy']
-            validation_top5_accuracy = checkpoint['validation_top5_accuracy']
             validation_loss = checkpoint['validation_loss']
+            train_top1_accuracy = checkpoint['train_top1_accuracy'] if 'train_top1_accuracy' in checkpoint else 0.0
+            train_top5_accuracy = checkpoint['train_top5_accuracy'] if 'train_top5_accuracy' in checkpoint else 0.0
+            validation_top1_accuracy = checkpoint['validation_top1_accuracy'] if 'validation_top1_accuracy' in checkpoint else 0.0
+            validation_top5_accuracy = checkpoint['validation_top5_accuracy'] if 'validation_top5_accuracy' in checkpoint else 0.0
             model.load_state_dict(checkpoint['weights'])
 
             model.eval()
@@ -448,7 +441,11 @@ def perf(model_list, model_directory, dataset_names, device, load_data=None, onl
                     train_loss, train_top1_accuracy, train_top5_accuracy))
 
             if not only_exists:
-                evaluate_model(model_name, model, load_data, dataset_names, print, 'similarity' in model_name, device)
+                if 'vae' in model_name:
+                    print('Skipping Evaluation of VAE model {}'.format(model_name))
+                else:
+                    evaluate_model(model_name, model, load_data, dataset_names, print, 'similarity' in model_name, device)
+                    evaluate_model(model_name + '_eval_on_bilateral_images', model, load_bilateral_data, dataset_names, print, 'similarity' in model_name, device)
         else:
             print('Checkpoint not available for model {}'.format(model_name))
         del model

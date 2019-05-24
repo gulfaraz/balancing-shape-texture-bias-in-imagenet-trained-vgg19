@@ -1,6 +1,8 @@
 
 # coding: utf-8
 
+# In[1]: Load Libraries
+
 # native
 import os
 import sys
@@ -9,7 +11,7 @@ import sys
 from utils import *
 from dataset import *
 from vgg19min import *
-from resnet50min import *
+from betavae import *
 from score import *
 from trainer import *
 from logger import *
@@ -23,6 +25,7 @@ import torchvision.transforms as transforms
 
 import cv2
 
+# In[2]: Check Requirements
 
 requirements = {
     torch: '1'
@@ -35,8 +38,10 @@ config = configuration()
 for k, v in sorted(vars(config).items()):
     print('{0}: {1}'.format(k, v))
 
+# In[3]: Load Datasets
 
 IMAGE_SIZE = (config.inputSize, config.inputSize)
+VAE_IMAGE_SIZE = (config.vaeImageSize, config.vaeImageSize)
 
 imagenet_normalization_values = {
     'mean': [0.485, 0.456, 0.406],
@@ -63,7 +68,7 @@ train_transforms = transforms.Compose([
 ])
 
 test_transforms = transforms.Compose([
-    transforms.Resize(256),
+    transforms.Resize(roundUp(IMAGE_SIZE[0])),
     transforms.CenterCrop(IMAGE_SIZE),
     transforms.ToTensor(),
     normalize
@@ -81,16 +86,15 @@ bilateral_train_transforms = transforms.Compose([
 bilateral_test_transforms = transforms.Compose([
     lambda x: np.array(cv2.bilateralFilter(np.array(x), 10, 100, 50)),
     transforms.ToPILImage(),
-    transforms.Resize(256),
+    transforms.Resize(roundUp(IMAGE_SIZE[0])),
     transforms.CenterCrop(IMAGE_SIZE),
     transforms.ToTensor(),
     normalize
 ])
 
-pair_transforms = transforms.Compose([
-    transforms.CenterCrop(IMAGE_SIZE),
-    transforms.ToTensor(),
-    normalize
+vae_transforms = transforms.Compose([
+    transforms.Resize(VAE_IMAGE_SIZE),
+    transforms.ToTensor()
 ])
 
 highpass_transforms = transforms.Compose([
@@ -111,7 +115,7 @@ def load_data(dataset_name, split, train_transforms=train_transforms, test_trans
     istrain = split == 'train'
     transforms = train_transforms if istrain else test_transforms
 
-    dataset = MiniImageNetDataset(dataset_path, split=split, transforms=transforms)#raw_transforms)
+    dataset = ImageNet200Dataset(dataset_path, split=split, transforms=transforms)#raw_transforms)
     loader = DataLoader(dataset, batch_size=config.batchSize, shuffle=istrain, num_workers=config.numberOfWorkers)
 
     print('{} dataset {} has {} datapoints in {} batches'.format(split, dataset_name, len(dataset), len(loader)))
@@ -125,7 +129,7 @@ def load_bilateral_data(dataset_name, split,
     istrain = split == 'train'
     transforms = train_transforms if istrain else test_transforms
 
-    dataset = MiniImageNetDataset(dataset_path, split=split, transforms=transforms)#raw_transforms)
+    dataset = ImageNet200Dataset(dataset_path, split=split, transforms=transforms)#raw_transforms)
     loader = DataLoader(dataset, batch_size=config.batchSize, shuffle=istrain, num_workers=config.numberOfWorkers)
 
     print('{} dataset {} has {} datapoints in {} batches'.format(split, dataset_name, len(dataset), len(loader)))
@@ -137,10 +141,10 @@ def load_pair_data(dataset_names, split, target_type):
     target_dataset_path = os.path.join(config.rootPath, 'datasets', dataset_names[1])
 
     istrain = split == 'train'
-    target_transforms = highpass_transforms if target_type == 'highpass' else pair_transforms
+    target_transforms = highpass_transforms if target_type == 'highpass' else vae_transforms
 
-    dataset = MiniImageNetPairDataset(input_dataset_path, target_dataset_path, split=split,
-        transforms=pair_transforms, target_type=target_type, target_transforms=target_transforms)
+    dataset = ImageNet200PairDataset(input_dataset_path, target_dataset_path, split=split,
+        transforms=vae_transforms, target_type=target_type, target_transforms=target_transforms)
     loader = DataLoader(dataset, batch_size=config.batchSize, shuffle=istrain, num_workers=config.numberOfWorkers)
 
     print('{} dataset pair ({}, {}) has {} datapoints in {} batches'.format(split, dataset_names[0], dataset_names[1],
@@ -159,6 +163,13 @@ bilateral_original_train_dataset, bilateral_original_train_loader = load_data('m
 bilateral_original_val_dataset, bilateral_original_val_loader = load_data('miniimagenet', 'val',
     train_transforms=bilateral_train_transforms, test_transforms=bilateral_test_transforms)
 
+_, nonstylized_nonstylized_loader = load_pair_data(['stylized-miniimagenet-0.0', 'stylized-miniimagenet-1.0'],
+                            'train', 'min')
+
+# celeba_dataset = CelebADataset('./space/datasets/CelebA/img_align_celeba', transforms=betavae_transforms)
+# celeba_loader = DataLoader(celeba_dataset, batch_size=config.batchSize, shuffle=True,
+#                         num_workers=config.numberOfWorkers, drop_last=True)
+
 for dataset, loader in [
     (original_train_dataset, original_train_loader),
     (original_val_dataset, original_val_loader),
@@ -174,81 +185,58 @@ dataset_names = [
     'stylized-miniimagenet-0.1', 'stylized-miniimagenet-0.0', 'miniimagenet'
 ]
 
+# In[4]: Setup Models
 
 # models directory
 model_directory = pathJoin(config.rootPath, 'models')
 
 
 supported_models = {
-    'vgg19_vanilla_tune_fc': create_vgg19_vanilla_tune_fc,
-    'vgg19_bn_all_tune_fc': create_vgg19_bn_all_tune_fc,
-    'vgg19_bn_all_tune_all': create_vgg19_bn_all_tune_all,
+    # baseline
+    'vgg19_vanilla_tune_fc': create_vgg19_vanilla_tune_fc, # Vanilla (No Norm)
+    # normalization
+    'vgg19_bn_all_tune_fc': create_vgg19_bn_all_tune_fc, # Batch Norm - vgg19_bn_all_tune_fc_confirm
+    'vgg19_bn_all_tune_all': create_vgg19_bn_all_tune_all, # Batch Norm Alt - vgg19_bn_all_tune_all_confirm
+    'vgg19_bn_in_single_tune_all': create_vgg19_bn_in_single_tune_all, # Batch Norm with Single IN - vgg19_bn_in_single_tune_all_confirm
+    'vgg19_in_all_tune_all': create_vgg19_in_all_tune_all, # Instance Norm - vgg19_in_all_tune_all_confirm
     'vgg19_in_single_tune_after': create_vgg19_in_single_tune_after,
-    'vgg19_in_single_tune_all': create_vgg19_in_single_tune_all,
-    'vgg19_in_affine_single_tune_all': create_vgg19_in_affine_single_tune_all,
-    'vgg19_in_all_tune_all': create_vgg19_in_all_tune_all,
+    'vgg19_in_single_tune_all': create_vgg19_in_single_tune_all, # Single IN
+    'vgg19_in_affine_single_tune_all': create_vgg19_in_affine_single_tune_all, # Single IN with Affine - vgg19_in_affine_single_tune_all_confirm
     'vgg19_in_bs_single_tune_after': create_vgg19_in_bs_single_tune_after,
     'vgg19_in_bs_single_tune_after_eval': create_vgg19_in_bs_eval,
     'vgg19_in_bs_single_tune_all': create_vgg19_in_bs_single_tune_all,
     'vgg19_in_bs_single_tune_all_eval': create_vgg19_in_bs_eval,
-    'vgg19_in_bs_all_tune_all': create_vgg19_in_bs_all_tune_all,
-    'vgg19_bn_in_single_tune_all': create_vgg19_bn_in_single_tune_all,
+    'vgg19_in_bs_all_tune_all': create_vgg19_in_bs_all_tune_all, # IN-SM - vgg19_in_bs_all_tune_all_confirm
+    # similarity
     'vgg19_vanilla_similarity_0.04_tune_all': create_vgg19_vanilla_similarity_tune_all,
     'vgg19_in_single_similarity_0.04_tune_all': create_vgg19_in_single_similarity_tune_all,
     'vgg19_bn_all_similarity_tune_fc': create_vgg19_bn_all_similarity_tune_fc,
     'vgg19_bn_all_similarity_tune_all': create_vgg19_bn_all_similarity_tune_all,
-    # 'vgg19_cosine_tune_all_no_similarity': create_vgg19_cosine_tune_all
-    # 'vgg19_custom_cosine_similarity_weight_0.04_tune_all_grad_clip_50_pos_loss': create_vgg19_cosine_tune_all
-    'resnet50_tune_fc_0.1': create_resnet50_bn_tune_fc,
-    'resnet50_tune_fc_0.01': create_resnet50_bn_tune_fc,
-    'resnet50_tune_fc_0.001': create_resnet50_bn_tune_fc,
-    'resnet50_tune_fc_0.0001': create_resnet50_bn_tune_fc,
-    'resnet50_in_tune_fc': create_resnet50_in_tune_fc,
-    'resnet50_bin_tune_fc': create_resnet50_bin_tune_fc,
-    'vgg19_autoencoder_min': create_vgg19_autoencoder,
-    'vgg19_autoencoder_smin': create_vgg19_autoencoder,
-    'vgg19_autoencoder_highpass': create_vgg19_autoencoder,
-    'vgg19_autoencoder_swap': create_vgg19_autoencoder,
-    'vgg19_autoencoder_mix': create_vgg19_autoencoder,
-    'vgg19_variational_autoencoder_loss_min': create_vgg19_variational_autoencoder,
-    'vgg19_variational_autoencoder_loss_smin': create_vgg19_variational_autoencoder,
-    'vgg19_variational_autoencoder_loss_highpass': create_vgg19_variational_autoencoder,
-    'vgg19_variational_autoencoder_min_0.001': create_vgg19_variational_autoencoder,
-    'vgg19_variational_autoencoder_smin_0.001': create_vgg19_variational_autoencoder,
-    'vgg19_variational_autoencoder_min_0.005': create_vgg19_variational_autoencoder,
-    'vgg19_variational_autoencoder_smin_0.005': create_vgg19_variational_autoencoder,
-    'vgg19_variational_autoencoder_highpass': create_vgg19_variational_autoencoder,
-    'vgg19_variational_autoencoder_swap': create_vgg19_variational_autoencoder,
-    'vgg19_variational_autoencoder_mix': create_vgg19_variational_autoencoder,
+    # bilateral
     'vgg19_vanilla_tune_fc_bilateral': create_vgg19_vanilla_tune_fc,
     'vgg19_bn_all_tune_fc_bilateral': create_vgg19_bn_all_tune_fc,
+    'vgg19_bn_in_single_tune_all_bilateral': create_vgg19_bn_in_single_tune_all,
+    'vgg19_in_all_tune_all_bilateral': create_vgg19_in_all_tune_all,
     'vgg19_in_single_tune_all_bilateral': create_vgg19_in_single_tune_all,
     'vgg19_in_affine_single_tune_all_bilateral': create_vgg19_in_affine_single_tune_all,
-    'resnet50_tune_fc_0.01_bilateral': create_resnet50_bn_tune_fc,
-    'resnet50_bin_tune_fc_bilateral': create_resnet50_bin_tune_fc,
-    'vgg19_in_single_tune_all_vae_highpass': create_vgg19_vae_support(
-        'vgg19_in_single_tune_all', 'vgg19_variational_autoencoder_highpass',
-        model_directory, config.device),
-    'vgg19_bn_in_single_tune_all_confirm': create_vgg19_bn_in_single_tune_all,
-    'vgg19_bn_in_single_tune_all_bilateral': create_vgg19_bn_in_single_tune_all,
-    'vgg19_in_all_tune_all_confirm': create_vgg19_in_all_tune_all,
-    'vgg19_in_all_tune_all_bilateral': create_vgg19_in_all_tune_all,
-    'vgg19_in_bs_all_tune_all_confirm': create_vgg19_in_bs_all_tune_all,
     'vgg19_in_bs_all_tune_all_bilateral': create_vgg19_in_bs_all_tune_all,
-    'vgg19_variational_autoencoder_mean_loss_min': create_vgg19_variational_autoencoder
+    # latent representation
+    'vae{}_beta{}_min'.format(config.zdim, config.beta): create_betavae(config.zdim),
+    # feature + latent
+    # 'vgg19_in_single_tune_all_vae_highpass': create_vgg19_vae_support(
+    #     'vgg19_in_single_tune_all', 'vgg19_variational_autoencoder_highpass',
+    #     model_directory, config.device),
 }
 
-SKIP_AUTOENCODER_TRAINING = [
-    'vgg19_variational_autoencoder_min',
-    'vgg19_variational_autoencoder_smin',
-    'vgg19_variational_autoencoder_highpass'
-]
+# In[5]: Sanity Check
 
 models = {k:v for (k,v) in supported_models.items()
             if k in (config.model if config.model is not None else supported_models)}
 assert len(models.keys()) > 0, 'Please specify a model'
 
-sanity(models, original_train_loader, config.device)
+sanity(models, original_train_loader, nonstylized_nonstylized_loader, config.device)
+
+# In[6]: Train Models
 
 if config.train:
 
@@ -265,25 +253,24 @@ if config.train:
         logger.info(' '.join(sys.argv))
         logger.info('Model Name {}'.format(model_name))
         model = models[model_name]()
-        if 'autoencoder' in model_name:
+        if 'vae' in model_name:
             target_type = model_name.split('_')[-1]
             _, pair_train_loader = load_pair_data(['stylized-miniimagenet-0.0', 'stylized-miniimagenet-1.0'],
                                         'train', target_type)
             _, pair_val_loader = load_pair_data(['stylized-miniimagenet-0.0', 'stylized-miniimagenet-1.0'],
                                         'val', target_type)
             run_autoencoder(
-                model_name, model,
+                model_name,
+                model,
                 model_directory,
                 config.numberOfEpochs,
                 config.autoencoderLearningRate,
-                config.classifierLearningRate,
                 logger,
                 pair_train_loader,
                 pair_val_loader,
-                original_train_loader,
-                original_val_loader, config.device,
-                load_data=load_data,
-                should_train_autoencoder=model_name not in SKIP_AUTOENCODER_TRAINING
+                config.device,
+                config.beta,
+                config.vaeImageSize
             )
         else:
             run(
@@ -308,12 +295,7 @@ if config.train:
         del model
         torch.cuda.empty_cache()
 
+# In[6]: Check Performance
 
-# Check Performance
-
-print('normal eval')
-perf(models, model_directory, dataset_names, config.device, load_data=load_data, only_exists=config.exists)
-
-print('bilateral eval')
-perf(models, model_directory, dataset_names, config.device, load_data=load_bilateral_data, only_exists=config.exists)
+perf(models, model_directory, dataset_names, config.device, load_data=load_data, load_bilateral_data=load_bilateral_data, only_exists=config.exists)
 
