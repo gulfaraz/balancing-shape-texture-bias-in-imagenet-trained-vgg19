@@ -215,7 +215,8 @@ supported_models = {
     'vgg19_in_affine_single_tune_all_bilateral': create_vgg19_in_affine_single_tune_all,
     'vgg19_in_sm_all_tune_all_bilateral': create_vgg19_in_sm_all_tune_all,
     # latent representation
-    'vae{}_beta{}_nonstylized'.format(config.zdim, config.beta): create_betavae(config.zdim),
+    'vae{}_beta{}_gamma{}_nonstylized'.format(
+        config.zdim, config.beta, config.gamma): create_betavae(config.zdim),
     # latent classifier
     'classifier_z32_beta0.0': create_betavae_classifier(
         pathJoin(model_directory, 'vae32_beta0.0_nonstylized.ckpt'), 32, config.device),
@@ -285,7 +286,9 @@ if config.train:
                 pair_val_loader,
                 config.device,
                 config.beta,
-                config.vaeImageSize
+                config.vaeImageSize,
+                config.gamma,
+                load_data=load_data
             )
         else:
             run(

@@ -66,7 +66,11 @@ class BetaVAE_H(nn.Module):
             nn.ConvTranspose2d(32, nc, 4, 2, 1),  # B, nc, 128, 128
         )
 
+        self.classifier = nn.Sequential(nn.Linear(z_dim, 200))
+
         self.weight_init()
+
+        self.classification_mode = False
 
     def weight_init(self):
         for block in self._modules:
@@ -79,14 +83,21 @@ class BetaVAE_H(nn.Module):
         logvar = distributions[:, self.z_dim:]
         z = reparametrize(mu, logvar)
         x_recon = self._decode(z)
+        y = self.classifier(z)
 
-        return x_recon, mu, logvar
+        if self.classification_mode:
+            return y
+        else:
+            return y, x_recon, mu, logvar
 
     def _encode(self, x):
         return self.encoder(x)
 
     def _decode(self, z):
         return self.decoder(z)
+    
+    def set_classification_mode(self, mode):
+        self.classification_mode = mode
 
 
 class BetaVAE_H_CLASSIFIER(BetaVAE_H):
@@ -110,7 +121,7 @@ class BetaVAE_H_CLASSIFIER(BetaVAE_H):
 
 def create_betavae(z_dim):
     def initialize_betavae():
-        return BetaVAE_H(z_dim, 3)
+        return BetaVAE_H(z_dim=z_dim, nc=3)
     return initialize_betavae
 
 def create_betavae_classifier(vae_checkpoint_path, z_dim, device):

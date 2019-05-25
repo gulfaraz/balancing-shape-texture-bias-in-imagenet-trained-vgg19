@@ -150,6 +150,8 @@ def configuration():
                         help='beta value for the betavae loss')
     parser.add_argument('--zdim', type=int, default=32,
                         help='latent space dimension size for the betavae')
+    parser.add_argument('--gamma', type=float, default=1.0,
+                        help='weight of the classification loss in vae')
 
     parser.add_argument('--train', action='store_true', default=False,
                         help='train the models')

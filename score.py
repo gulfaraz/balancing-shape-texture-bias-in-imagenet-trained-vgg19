@@ -41,6 +41,11 @@ def score_model(model, dataloader, device, similarity_model=False):
 
 
 def evaluate_model(model_name, model, load_data, dataset_names, print_function, similarity_model, device):
+
+    model.eval()
+    if hasattr(model, 'set_classification_mode') and callable(getattr(model, 'set_classification_mode')):
+        model.set_classification_mode(True)
+
     scores = {
         'top5': [],
         'top1': []

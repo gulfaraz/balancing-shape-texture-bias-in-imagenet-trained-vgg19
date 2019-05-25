@@ -265,63 +265,102 @@ def run(model_name, model, model_directory, number_of_epochs, learning_rate, log
 
 # In[4]: Autoencoder
 
-def validate_autoencoder(model, loader, logger, device, filename, beta):
+def validate_autoencoder(model, loader, logger, device, filename, beta, gamma, criterion):
     logger.debug('Validation Start')
     model.eval()
 
+    total_top1, total_top5, total_, top1_score, top5_score = 0, 0, 0, 0, 0
     loss = []
 
     for batch_index, batch in enumerate(loader):
         batch_input = batch[loader.dataset.INDEX_IMAGE].to(device)
-        batch_target = batch[loader.dataset.INDEX_TARGET_IMAGE].to(device)
-        batch_output, mu, logvar = model(batch_input)
+        batch_classification_target = batch[loader.dataset.INDEX_TARGET].to(device)
+        batch_reconstruction_target = batch[loader.dataset.INDEX_TARGET_IMAGE].to(device)
+        batch_class_prediction, batch_reconstruction, mu, logvar = model(batch_input)
+
+        # accuracy
+        _, predicted_class = batch_class_prediction.topk(5, 1, True, True)
+        top1, top5, total = score(predicted_class, batch_classification_target)
+
+        total_top1 += top1
+        total_top5 += top5
+        total_ += total
 
         # loss
-        reconstruction_loss = calculate_reconstruction_loss(batch_target, batch_output)
+        classification_loss = criterion(batch_class_prediction, batch_classification_target)
+        reconstruction_loss = calculate_reconstruction_loss(batch_reconstruction_target, batch_reconstruction)
         total_kld, dim_wise_kld, mean_kld = calculate_kl_divergence(mu, logvar)
         effective_kl = beta * total_kld
+        effective_classification_loss = gamma * classification_loss
         batch_loss = reconstruction_loss + effective_kl
 
-        logger.debug('Batch Loss: {} Reconstruction Loss: {:.4f} KL-Divergence: {:.4f} Effective-KL {:.4f} Mean-KLD: {:.4f}'.format(
-            batch_loss.item(), reconstruction_loss.item(), total_kld.item(), effective_kl.item(), mean_kld.item()))
+        logger.debug('Batch Loss: {}'.format(batch_loss.item()) \
+            + ' Reconstruction Loss: {:.4f}'.format(reconstruction_loss.item()) \
+            + ' Effective-KL {:.4f}'.format(effective_kl.item()) \
+            + ' Effective-CE {:.4f}'.format(effective_classification_loss.item()) \
+            + ' Cross-Entropy {:.4f}'.format(classification_loss.item()) \
+            + ' KL-Divergence: {:.4f}'.format(total_kld.item()) \
+            + ' Mean-KLD: {:.4f}'.format(mean_kld.item()))
 
         loss.append(batch_loss.item())
 
         mean_loss = np.mean(loss)
 
+        top1_score = score_value(total_top1, total_)
+        top5_score = score_value(total_top5, total_)
+
         if batch_index == 0:
-            n = min(batch_target.size(0), 8)
-            comparison = torch.cat([batch_target[:n], batch_output.view(*batch_target.shape)[:n]])
+            n = min(batch_reconstruction_target.size(0), 8)
+            comparison = torch.cat([batch_reconstruction_target[:n],
+                batch_reconstruction.view(*batch_reconstruction_target.shape)[:n]])
             save_image(comparison.cpu(), filename, nrow=n, normalize=False)
 
         if (batch_index + 1) % 10 == 0:
-            logger.debug('Validation Batch {}/{}: Loss {:.4f}'.format(batch_index + 1, len(loader), mean_loss))
+            logger.debug('Training Batch {}/{}: Loss {:.4f}'.format(batch_index + 1, len(loader), mean_loss) \
+                + ' Top1 Accuracy {:.4f} Top5 Accuracy {:.4f}'.format(top1_score, top5_score))
             if DEBUG:
                 break
 
     logger.debug('Validation End')
-    return mean_loss
+    return top1_score, top5_score, mean_loss
 
-def train_autoencoder(model, loader, optimizer, logger, device, beta, grad_clip_norm_value=50):
+def train_autoencoder(model, loader, optimizer, logger, device, beta, gamma, criterion, grad_clip_norm_value=50):
     logger.debug('Training Start')
     model.train()
 
+    total_top1, total_top5, total_, top1_score, top5_score = 0, 0, 0, 0, 0
     loss = []
 
     for batch_index, batch in enumerate(loader):
         optimizer.zero_grad()
         batch_input = batch[loader.dataset.INDEX_IMAGE].to(device)
-        batch_target = batch[loader.dataset.INDEX_TARGET_IMAGE].to(device)
-        batch_output, mu, logvar = model(batch_input)
+        batch_classification_target = batch[loader.dataset.INDEX_TARGET].to(device)
+        batch_reconstruction_target = batch[loader.dataset.INDEX_TARGET_IMAGE].to(device)
+        batch_class_prediction, batch_reconstruction, mu, logvar = model(batch_input)
+
+        # accuracy
+        _, predicted_class = batch_class_prediction.topk(5, 1, True, True)
+        top1, top5, total = score(predicted_class, batch_classification_target)
+
+        total_top1 += top1
+        total_top5 += top5
+        total_ += total
 
         # loss
-        reconstruction_loss = calculate_reconstruction_loss(batch_target, batch_output)
+        classification_loss = criterion(batch_class_prediction, batch_classification_target)
+        reconstruction_loss = calculate_reconstruction_loss(batch_reconstruction_target, batch_reconstruction)
         total_kld, dim_wise_kld, mean_kld = calculate_kl_divergence(mu, logvar)
         effective_kl = beta * total_kld
+        effective_classification_loss = gamma * classification_loss
         batch_loss = reconstruction_loss + effective_kl
 
-        logger.debug('Batch Loss: {} Reconstruction Loss: {:.4f} KL-Divergence: {:.4f} Effective-KL {:.4f} Mean-KLD: {:.4f}'.format(
-            batch_loss.item(), reconstruction_loss.item(), total_kld.item(), effective_kl.item(), mean_kld.item()))
+        logger.debug('Batch Loss: {}'.format(batch_loss.item()) \
+            + ' Reconstruction Loss: {:.4f}'.format(reconstruction_loss.item()) \
+            + ' Effective-KL {:.4f}'.format(effective_kl.item()) \
+            + ' Effective-CE {:.4f}'.format(effective_classification_loss.item()) \
+            + ' Cross-Entropy {:.4f}'.format(classification_loss.item()) \
+            + ' KL-Divergence: {:.4f}'.format(total_kld.item()) \
+            + ' Mean-KLD: {:.4f}'.format(mean_kld.item()))
 
         loss.append(batch_loss.item())
 
@@ -332,18 +371,24 @@ def train_autoencoder(model, loader, optimizer, logger, device, beta, grad_clip_
         
         # use mean metrics
         mean_loss = np.mean(loss)
+
+        top1_score = score_value(total_top1, total_)
+        top5_score = score_value(total_top5, total_)
             
         if (batch_index + 1) % 10 == 0:
-            logger.debug('Training Batch {}/{}: Loss {:.4f}'.format(batch_index + 1, len(loader), mean_loss))
+            logger.debug('Training Batch {}/{}: Loss {:.4f}'.format(batch_index + 1, len(loader), mean_loss) \
+                + ' Top1 Accuracy {:.4f} Top5 Accuracy {:.4f}'.format(top1_score, top5_score))
             if DEBUG:
                 break
 
     logger.debug('Training End')
-    return mean_loss
+    return top1_score, top5_score, mean_loss
 
 
 def run_autoencoder(model_name, model, model_directory, number_of_epochs,
-    learning_rate, logger, train_loader, val_loader, device, beta, image_size, image_directory=pathJoin('betavaeresults')):
+    learning_rate, logger, train_loader, val_loader, device, beta, image_size,
+    gamma, image_directory=pathJoin('betavaeresults'), load_data=None,
+    dataset_names=['stylized-imagenet200-0.0', 'stylized-imagenet200-1.0']):
     checkpoint_path = pathJoin(model_directory, '{}.ckpt'.format(model_name))
     print(checkpoint_path)
 
@@ -370,20 +415,26 @@ def run_autoencoder(model_name, model, model_directory, number_of_epochs,
     image_directory = pathJoin(image_directory, model_name)
     os.makedirs(image_directory, exist_ok=True)
 
+    criterion = torch.nn.CrossEntropyLoss()
+
     for epoch in range(last_epoch, number_of_epochs + 1):
-        train_loss = train_autoencoder(model, train_loader, optimizer, logger, device, beta)
+        train_top1_accuracy, train_top5_accuracy, train_loss = train_autoencoder(
+            model, train_loader, optimizer, logger, device, beta, gamma, criterion)
 
         image_filename = pathJoin(image_directory, 'reconstructed_epoch_{}.png'.format(epoch))
 
-        validation_loss = validate_autoencoder(model, val_loader, logger, device, image_filename, beta)
+        validation_top1_accuracy, validation_top5_accuracy, validation_loss = validate_autoencoder(
+            model, val_loader, logger, device, image_filename, beta, gamma, criterion)
 
         with torch.no_grad():
             z = torch.randn(64, model.z_dim).to(device)
             sample = model._decode(z).cpu()
             sample_filename = pathJoin(image_directory, 'generated_epoch_{}.png'.format(epoch))
             save_image(sample.view(64, 3, image_size, image_size), sample_filename, normalize=False)
-        logger.info('Epoch {}: Train: Loss: {:.4f} Validation: Loss: {:.4f}'.format(
-            epoch, train_loss, validation_loss))
+        logger.info('Epoch {}: Train: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(
+            epoch, train_loss, train_top1_accuracy, train_top5_accuracy) \
+            + ' Validation: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(
+                validation_loss, validation_top1_accuracy, validation_top5_accuracy))
 
         explore_betavae(model_name, model, image_directory, epoch, val_loader, device)
 
@@ -391,7 +442,11 @@ def run_autoencoder(model_name, model, model_directory, number_of_epochs,
         os.makedirs(model_directory, exist_ok=True)
         checkpoint = {
             'epoch': epoch,
+            'train_top1_accuracy': train_top1_accuracy,
+            'train_top5_accuracy': train_top5_accuracy,
             'train_loss': train_loss,
+            'validation_top1_accuracy': validation_top1_accuracy,
+            'validation_top5_accuracy': validation_top5_accuracy,
             'validation_loss': validation_loss,
             'weights': model.state_dict(),
             'optimizer_weights': optimizer.state_dict()
@@ -399,6 +454,12 @@ def run_autoencoder(model_name, model, model_directory, number_of_epochs,
         torch.save(checkpoint, pathJoin(model_directory, '{}.ckpt'.format(model_name)))
 
     logger.info('Epoch {}'.format(checkpoint['epoch']))
+
+    evaluate_model(model_name, model, load_data, dataset_names, logger.info, False, device)
+    logger.info('Train: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(
+        checkpoint['train_loss'], checkpoint['train_top1_accuracy'], checkpoint['train_top5_accuracy']))
+    logger.info('Validation: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(
+        checkpoint['validation_loss'], checkpoint['validation_top1_accuracy'], checkpoint['validation_top5_accuracy']))
     logger.info('Train: Loss: {:.4f}'.format(checkpoint['train_loss']))
     logger.info('Validation: Loss: {:.4f}'.format(checkpoint['validation_loss']))
 
@@ -439,19 +500,14 @@ def perf(model_list, model_directory, dataset_names, device, load_data=None, loa
             validation_top5_accuracy = checkpoint['validation_top5_accuracy'] if 'validation_top5_accuracy' in checkpoint else 0.0
             model.load_state_dict(checkpoint['weights'])
 
-            model.eval()
-
             print('Epoch: {} Validation: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(
                 epoch, validation_loss, validation_top1_accuracy, validation_top5_accuracy) \
                 + ' Train: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(
                     train_loss, train_top1_accuracy, train_top5_accuracy))
 
             if not only_exists:
-                if 'vae' in model_name:
-                    print('Skipping Evaluation of VAE model {}'.format(model_name))
-                else:
-                    evaluate_model(model_name, model, load_data, dataset_names, print, 'similarity' in model_name, device)
-                    evaluate_model(model_name + '_eval_on_bilateral_images', model, load_bilateral_data, dataset_names, print, 'similarity' in model_name, device)
+                evaluate_model(model_name, model, load_data, dataset_names, print, 'similarity' in model_name, device)
+                evaluate_model(model_name + '_eval_on_bilateral_images', model, load_bilateral_data, dataset_names, print, 'similarity' in model_name, device)
         else:
             print('Checkpoint not available for model {}'.format(model_name))
         del model
