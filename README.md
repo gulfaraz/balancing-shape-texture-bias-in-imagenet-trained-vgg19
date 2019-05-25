@@ -1,2 +1,2 @@
-# understanding-neural-networks
-An attempt to interpret what we taught our machines
+# Balancing Shape-Texture Bias in CNNs
+A study on the effect of normalization in predictions by CNN models

@@ -198,7 +198,7 @@ class ImageNetDataset(BaseDataset):
 class ImageNet200PairDataset(BaseDataset):
 
     def __init__(self, input_directory, target_directory, split='train', transforms=None, target_type=None, target_transforms=None):
-        assert target_type in ['min', 'smin', 'highpass', 'swap', 'mix'], 'Unknown target type ({}) for pair dataset'.format(target_type)
+        assert target_type in ['nonstylized', 'stylized', 'highpass', 'swap', 'mix'], 'Unknown target type ({}) for pair dataset'.format(target_type)
         self.target_directory = pathJoin(target_directory, split)
         super().__init__(input_directory, split, transforms)
         self.target_type = target_type
@@ -220,9 +220,9 @@ class ImageNet200PairDataset(BaseDataset):
         input_filepath = self.datapoints[idx][0]
         target_filepath = self.datapoints[idx][1]
         input_image = self.loadImage(input_filepath)
-        if self.target_type == 'min':
+        if self.target_type == 'nonstylized':
             target_image = input_image
-        elif self.target_type == 'smin':
+        elif self.target_type == 'stylized':
             target_image = self.loadImage(target_filepath)
         elif self.target_type == 'highpass':
             target_image = input_image.filter(ImageFilter.FIND_EDGES)

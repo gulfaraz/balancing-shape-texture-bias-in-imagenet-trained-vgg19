@@ -6,7 +6,7 @@ from utils import init_weights, pathJoin
 import os
 
 
-def create_miniimagenet_classifier(dim_multiplier=1):
+def create_imagenet200_classifier(dim_multiplier=1):
     return torch.nn.Sequential(
         torch.nn.Linear(in_features=(25088 * dim_multiplier), out_features=4096, bias=True),
         torch.nn.ReLU(inplace=True),
@@ -31,7 +31,7 @@ class VGG_IN(torch.nn.Module):
                 self.instance_normalization = instance_normalization_function(
                     vgg19.features[layer_index].out_channels, affine=affine)
         self.features2 = vgg19.features[layer_index:]
-        self.classifier = create_miniimagenet_classifier()
+        self.classifier = create_imagenet200_classifier()
 
     def forward(self, x):
         x = self.features1(x)
@@ -47,7 +47,7 @@ class VGG_COSINE_SIMILARITY(torch.nn.Module):
     def __init__(self, layer_indices=[1, 6, 11, 20, 29], pretrained=False, eps=torch.tensor(1e-08)):
         super(VGG_COSINE_SIMILARITY, self).__init__()
         self.vgg19 = models.vgg19(pretrained=pretrained)
-        self.classifier = create_miniimagenet_classifier()
+        self.classifier = create_imagenet200_classifier()
         self.layer_indices = layer_indices
         self.eps = eps
 
@@ -179,7 +179,7 @@ def create_vgg19_vanilla_scratch():
     # load model from pytorch
     vgg19 = models.vgg19(pretrained=False)
 
-    vgg19.classifier = create_miniimagenet_classifier()
+    vgg19.classifier = create_imagenet200_classifier()
 
     vgg19.apply(init_weights)
 
@@ -198,7 +198,7 @@ def create_vgg19_vanilla_tune_fc():
     for param in vgg19.parameters():
         param.requires_grad = False
 
-    vgg19.classifier = create_miniimagenet_classifier()
+    vgg19.classifier = create_imagenet200_classifier()
 
     # train fc layers
     for param in vgg19.classifier.parameters():
@@ -216,7 +216,7 @@ def create_vgg19_bn_all_tune_fc():
     for param in vgg19.features.parameters():
         param.requires_grad = False
 
-    vgg19.classifier = create_miniimagenet_classifier()
+    vgg19.classifier = create_imagenet200_classifier()
 
     # train fc layers
     for param in vgg19.classifier.parameters():
@@ -232,7 +232,7 @@ def create_vgg19_bn_all_tune_all():
     for param in vgg19.features.parameters():
         param.requires_grad = True
 
-    vgg19.classifier = create_miniimagenet_classifier()
+    vgg19.classifier = create_imagenet200_classifier()
 
     # train fc layers
     for param in vgg19.classifier.parameters():
@@ -300,7 +300,7 @@ def create_vgg19_in_all_tune_all_root(instance_normalization_function=torch.nn.I
             isinstance(layer, torch.nn.Conv2d)):
             transfer_layer_index += 1
 
-    vgg19_in.classifier = create_miniimagenet_classifier()
+    vgg19_in.classifier = create_imagenet200_classifier()
 
     # train all layers
     for param in vgg19_in.parameters():
@@ -315,7 +315,7 @@ def create_vgg19_in_all_tune_all():
 
 # Instance Normalization with Batch Statistics
 
-def create_vgg19_in_bs_single_tune_after():
+def create_vgg19_in_sm_single_tune_after():
     vgg = VGG_IN(21, instance_normalization_function=InstanceNormBatchSwap, pretrained=True)
 
     # freeze layers before IN
@@ -333,7 +333,7 @@ def create_vgg19_in_bs_single_tune_after():
     return vgg
 
 
-def create_vgg19_in_bs_single_tune_all():
+def create_vgg19_in_sm_single_tune_all():
     vgg = VGG_IN(21, instance_normalization_function=InstanceNormBatchSwap, pretrained=True)
 
     # train all layers
@@ -343,7 +343,7 @@ def create_vgg19_in_bs_single_tune_all():
     return vgg
 
 
-def create_vgg19_in_bs_eval():
+def create_vgg19_in_sm_eval():
     vgg = VGG_IN(21, pretrained=True)
 
     # freeze all layers
@@ -353,7 +353,7 @@ def create_vgg19_in_bs_eval():
     return vgg
 
 
-def create_vgg19_in_bs_all_tune_all():
+def create_vgg19_in_sm_all_tune_all():
     return create_vgg19_in_all_tune_all_root(instance_normalization_function=InstanceNormBatchSwap)
 
 
@@ -381,7 +381,7 @@ def create_vgg19_bn_in_single_tune_all_root(instance_normalization_function=None
             isinstance(layer, torch.nn.Conv2d)):
             transfer_layer_index += 1
 
-    vgg19_in.classifier = create_miniimagenet_classifier()
+    vgg19_in.classifier = create_imagenet200_classifier()
 
     # train all layers
     for param in vgg19_in.parameters():
@@ -445,7 +445,7 @@ def create_vgg19_bn_all_similarity_tune_all():
     return vgg19
 
 
-def create_vgg19_in_bs_single_similarity(filename):
+def create_vgg19_in_sm_single_similarity(filename):
     vgg19 = VGG_IN(21, instance_normalization_function=InstanceNormSimilarity, pretrained=True, filename=filename)
 
     # train all layers
@@ -453,227 +453,6 @@ def create_vgg19_in_bs_single_similarity(filename):
         param.requires_grad = False
 
     return vgg19
-
-
-class VGG_AUTOENCODER(torch.nn.Module):
-    def __init__(self, pretrained=False):
-        super(VGG_AUTOENCODER, self).__init__()
-        vgg19 = models.vgg19(pretrained=pretrained)
-        self.encoder = torch.nn.ModuleList([])
-        self.decoder = torch.nn.ModuleList([])
-        for layer in vgg19.features:
-            self.encoder.append(self.get_encoding_layer(layer))
-            self.decoder.insert(0, self.get_decoding_layer(layer))
-        self.classifier = create_miniimagenet_classifier()
-
-    def forward(self, x, classify=True):
-        indices = []
-        for layer in self.encoder:
-            x = layer(x)
-            if isinstance(layer, torch.nn.MaxPool2d):
-                indices.append(x[1])
-                x = x[0]
-        if classify:
-            x = x.view(x.size(0), -1)
-            x = self.classifier(x)
-        else:
-            for layer in self.decoder:
-                if isinstance(layer, torch.nn.MaxUnpool2d):
-                    x = layer(x, indices.pop())
-                else:
-                    x = layer(x)
-        return x
-    
-    def set_mode(self, mode):
-        for params in self.encoder.parameters():
-            params.requires_grad = (mode == 'train-autoencoder')
-        for params in self.decoder.parameters():
-            params.requires_grad = (mode == 'train-autoencoder')
-        for params in self.classifier.parameters():
-            params.requires_grad = (mode == 'train-classifier')
-
-    def get_encoding_layer(self, layer):
-        if isinstance(layer, torch.nn.MaxPool2d):
-            return torch.nn.MaxPool2d(
-                layer.kernel_size,
-                stride=layer.stride,
-                padding=layer.padding,
-                dilation=layer.dilation,
-                return_indices=True,
-                ceil_mode=layer.ceil_mode
-            )
-        return layer
-
-    def get_decoding_layer(self, layer):
-        if isinstance(layer, torch.nn.Conv2d):
-            return torch.nn.ConvTranspose2d(
-                layer.out_channels,
-                layer.in_channels,
-                layer.kernel_size,
-                stride=layer.stride,
-                padding=layer.padding,
-                dilation=layer.dilation,
-                groups=layer.groups,
-                bias=(layer.bias is not None)
-            )
-        elif isinstance(layer, torch.nn.MaxPool2d):
-            return torch.nn.MaxUnpool2d(
-                layer.kernel_size,
-                stride=layer.stride,
-                padding=layer.padding
-            )
-        return layer
-
-def create_vgg19_autoencoder():
-    autoencoder = VGG_AUTOENCODER(pretrained=False)
-    autoencoder.set_mode('eval')
-    return autoencoder
-
-
-class VGG_VAE(torch.nn.Module):
-    def __init__(self, pretrained=False, num_classes=200, latent_size=4096):
-        super(VGG_VAE, self).__init__()
-        vgg19 = models.vgg19(pretrained=pretrained)
-        self.encoder = torch.nn.ModuleList([])
-        self.decoder = torch.nn.ModuleList([])
-        for layer in vgg19.features:
-            self.encoder.append(self.get_encoding_layer(layer))
-            self.decoder.insert(0, self.get_decoding_layer(layer))
-
-        feature_size = 25088
-        self.z_size = latent_size
-
-        self.classifier = torch.nn.Linear(in_features=self.z_size, out_features=num_classes, bias=True)
-
-        self.encoder_to_latent = torch.nn.Sequential(
-            torch.nn.Linear(feature_size, 10240),
-            torch.nn.BatchNorm1d(10240),
-            torch.nn.ReLU(inplace=True),
-            torch.nn.Linear(10240, self.z_size),
-            torch.nn.BatchNorm1d(self.z_size),
-            torch.nn.ReLU(inplace=True)
-        )
-
-        self.latent_to_mu = torch.nn.Linear(self.z_size, self.z_size)
-        self.latent_to_logvar = torch.nn.Linear(self.z_size, self.z_size)
-
-        self.latent_to_decoder = torch.nn.Sequential(
-            torch.nn.Linear(self.z_size, self.z_size),
-            torch.nn.BatchNorm1d(self.z_size),
-            torch.nn.ReLU(inplace=True),
-            torch.nn.Linear(self.z_size, 10240),
-            torch.nn.BatchNorm1d(10240),
-            torch.nn.ReLU(inplace=True),
-            torch.nn.Linear(10240, feature_size),
-            torch.nn.BatchNorm1d(feature_size),
-            torch.nn.ReLU(inplace=True)
-        )
-    
-    def encode(self, x):
-        indices = []
-        for layer in self.encoder:
-            x = layer(x)
-            if isinstance(layer, torch.nn.MaxPool2d):
-                indices.append(x[1])
-                x = x[0]
-        features_shape = x.shape
-        x = x.view(x.size(0), -1)
-        x = self.encoder_to_latent(x)
-        return x, indices, features_shape
-    
-    def decode(self, z, indices=None, feature_shape=None):
-        x = self.latent_to_decoder(z)
-        x = x.view(*feature_shape)
-        for layer in self.decoder:
-            if isinstance(layer, torch.nn.MaxUnpool2d):
-                if indices is None:
-                    upsample = torch.nn.Upsample(scale_factor=2)
-                    maxpool = torch.nn.MaxPool2d(
-                        layer.kernel_size,
-                        stride=layer.stride,
-                        padding=layer.padding,
-                        return_indices=True
-                    )
-                    _, index = maxpool(torch.zeros_like(upsample(x)))
-                else:
-                    index = indices.pop()
-                x = layer(x, index)
-            else:
-                x = layer(x)
-        return x
-
-    def forward(self, x, classify=True):
-        x, indices, feature_shape = self.encode(x)
-        if classify:
-            x = self.classifier(x)
-            return x
-        else:
-            mu = self.latent_to_mu(x)
-            logvar = self.latent_to_logvar(x)
-            z = self.reparameterize(mu, logvar)
-            x = self.decode(z, indices=indices, feature_shape=feature_shape)
-            return x, mu, logvar
-    
-    def set_mode(self, mode):
-        for params in self.encoder.parameters():
-            params.requires_grad = (mode == 'train-autoencoder')
-        for params in self.encoder_to_latent.parameters():
-            params.requires_grad = (mode == 'train-autoencoder')
-        for params in self.latent_to_mu.parameters():
-            params.requires_grad = (mode == 'train-autoencoder')
-        for params in self.latent_to_logvar.parameters():
-            params.requires_grad = (mode == 'train-autoencoder')
-        for params in self.latent_to_decoder.parameters():
-            params.requires_grad = (mode == 'train-autoencoder')
-        for params in self.decoder.parameters():
-            params.requires_grad = (mode == 'train-autoencoder')
-        for params in self.classifier.parameters():
-            params.requires_grad = (mode == 'train-classifier')
-
-    def get_encoding_layer(self, layer):
-        if isinstance(layer, torch.nn.MaxPool2d):
-            return torch.nn.MaxPool2d(
-                layer.kernel_size,
-                stride=layer.stride,
-                padding=layer.padding,
-                dilation=layer.dilation,
-                return_indices=True,
-                ceil_mode=layer.ceil_mode
-            )
-        return layer
-
-    def get_decoding_layer(self, layer):
-        if isinstance(layer, torch.nn.Conv2d):
-            return torch.nn.ConvTranspose2d(
-                layer.out_channels,
-                layer.in_channels,
-                layer.kernel_size,
-                stride=layer.stride,
-                padding=layer.padding,
-                dilation=layer.dilation,
-                groups=layer.groups,
-                bias=(layer.bias is not None)
-            )
-        elif isinstance(layer, torch.nn.MaxPool2d):
-            return torch.nn.MaxUnpool2d(
-                layer.kernel_size,
-                stride=layer.stride,
-                padding=layer.padding
-            )
-        return layer
-
-    def reparameterize(self, mu, logvar):
-        if self.training:
-            std = logvar.mul(0.5).exp_()
-            eps = torch.Tensor(std.data.new(std.size()).normal_())
-            return eps.mul(std).add_(mu)
-        else:
-            return mu
-
-def create_vgg19_variational_autoencoder():
-    vae = VGG_VAE(pretrained=False)
-    vae.set_mode('eval')
-    return vae
 
 
 class VGG_IN_VAE(torch.nn.Module):
@@ -693,7 +472,7 @@ class VGG_IN_VAE(torch.nn.Module):
         # self.autoencoder_model.eval()
         # self.autoencoder_model.set_mode('eval')
         self.autoencoder_network = self.autoencoder_feature_extractor(autoencoder_model)
-        self.classifier = create_miniimagenet_classifier(2)
+        self.classifier = create_imagenet200_classifier(2)
 
     def forward(self, x):
         with torch.no_grad():

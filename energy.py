@@ -55,7 +55,7 @@ train_transforms = transforms.Compose([
 ])
 
 test_transforms = transforms.Compose([
-    transforms.Resize(256),
+    transforms.Resize(roundUp(IMAGE_SIZE[0])),
     transforms.CenterCrop(IMAGE_SIZE),
     transforms.ToTensor(),
     normalize
@@ -67,32 +67,32 @@ def load_data(dataset_name, split):
     istrain = split == 'train'
     transforms = train_transforms if istrain else test_transforms
 
-    dataset = MiniImageNetDataset(dataset_path, split=split, transforms=transforms)#raw_transforms)
+    dataset = ImageNet200Dataset(dataset_path, split=split, transforms=transforms)#raw_transforms)
     loader = DataLoader(dataset, batch_size=config.batchSize, shuffle=istrain, num_workers=config.numberOfWorkers)
 
     print('{} dataset {} has {} datapoints in {} batches'.format(split, dataset_name, len(dataset), len(loader)))
 
     return dataset, loader
 
-# original_train_dataset, original_train_loader = load_data('miniimagenet', 'train')
-original_val_dataset, original_val_loader = load_data('miniimagenet', 'val')
+# nonstylized_train_dataset, nonstylized_train_loader = load_data('imagenet200', 'train')
+nonstylized_val_dataset, nonstylized_val_loader = load_data('imagenet200', 'val')
 
-# stylized_train_dataset, stylized_train_loader = load_data('stylized-miniimagenet-1.0', 'train')
-stylized_val_dataset, stylized_val_loader = load_data('stylized-miniimagenet-1.0', 'val')
+# stylized_train_dataset, stylized_train_loader = load_data('stylized-imagenet200-1.0', 'train')
+stylized_val_dataset, stylized_val_loader = load_data('stylized-imagenet200-1.0', 'val')
 
 for dataset, loader in [
-    # (original_train_dataset, original_train_loader),
-    (original_val_dataset, original_val_loader),
+    # (nonstylized_train_dataset, nonstylized_train_loader),
+    (nonstylized_val_dataset, nonstylized_val_loader),
     # (stylized_train_dataset, stylized_train_loader),
     (stylized_val_dataset, stylized_val_loader)
 ]:
     print('{} Datapoints in {} Batches'.format(len(dataset), len(loader)))
 
 dataset_names = [
-    'stylized-miniimagenet-1.0', 'stylized-miniimagenet-0.9', 'stylized-miniimagenet-0.8',
-    'stylized-miniimagenet-0.7', 'stylized-miniimagenet-0.6', 'stylized-miniimagenet-0.5',
-    'stylized-miniimagenet-0.4', 'stylized-miniimagenet-0.3', 'stylized-miniimagenet-0.2',
-    'stylized-miniimagenet-0.1', 'stylized-miniimagenet-0.0', 'miniimagenet'
+    'stylized-imagenet200-1.0', 'stylized-imagenet200-0.9', 'stylized-imagenet200-0.8',
+    'stylized-imagenet200-0.7', 'stylized-imagenet200-0.6', 'stylized-imagenet200-0.5',
+    'stylized-imagenet200-0.4', 'stylized-imagenet200-0.3', 'stylized-imagenet200-0.2',
+    'stylized-imagenet200-0.1', 'stylized-imagenet200-0.0', 'imagenet200'
 ]
 
 filter_size = 2 ## Set Filter Size
@@ -202,7 +202,7 @@ def get_energy(image, image_filter):
     return output.sum()
 
 image_transforms = {
-    'original': np.array,
+    'nonstylized': np.array,
     'blur': blur,
     'bilateral': bilateral
 }
@@ -319,11 +319,11 @@ def write(energy_sets, name):
 
 # display(energy_sets)
 
-for dataset_index, dataset in enumerate([original_val_dataset, stylized_val_dataset]):
+for dataset_index, dataset in enumerate([nonstylized_val_dataset, stylized_val_dataset]):
     for datapoint_index, datapoint in enumerate(tqdm(dataset)):
         index_image = dataset.INDEX_IMAGE
         index_target = dataset.INDEX_TARGET
         image = toImage(datapoint[index_image])
         energy_set = calculate_energy(image, datapoint_index, datapoint[index_target])
         # print(energy_set.to_string())
-        write(energy_set, 'original' if dataset_index == 0 else 'stylized')
+        write(energy_set, 'nonstylized' if dataset_index == 0 else 'stylized')

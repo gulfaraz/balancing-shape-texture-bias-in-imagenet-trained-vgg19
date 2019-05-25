@@ -3,15 +3,11 @@ import matplotlib.pyplot as plt
 from scipy import stats as scipystat
 
 similarity_filename = 'similarity.csv'
-checkpoint_maps = [ 'imagenet', 'miniimagenet_with_in', 'stylized_miniimagenet_with_in' ]
-names = ['original_val_loader', 'stylized_val_loader', 'original_train_loader', 'stylized_train_loader']
+checkpoint_maps = [ 'imagenet', 'imagenet200_with_in', 'stylized_imagenet200_with_in' ]
+names = ['nonstylized_val_loader', 'stylized_val_loader', 'nonstylized_train_loader', 'stylized_train_loader']
 stats = [ 'mean', 'std' ]
 
-id_labels = [
-    'model',
-    'dataset-split',
-    'stat'
-]
+id_labels = ['model', 'dataset-split', 'stat']
 
 activation_labels = list(range(0, 512))
 
@@ -38,7 +34,7 @@ similarity.to_csv(similarity_filename)
 
 stats = pd.read_csv(similarity_filename)
 
-dataset_types = [ 'original', 'stylized' ]
+dataset_types = [ 'nonstylized', 'stylized' ]
 loader_types = [ 'val', 'train' ]
 loader_string_format = '{}_{}_loader'
 
@@ -47,56 +43,56 @@ for loader_type in loader_types:
     i = 1
     plt.figure(figsize=(20, 8))
     loader_type_stats = pd.DataFrame()
-    in_original_mean = None
-    in_original_std = None
-    min_original_mean = None
-    min_original_std = None
-    smin_original_mean = None
-    smin_original_std = None
+    in_nonstylized_mean = None
+    in_nonstylized_std = None
+    in200_nonstylized_mean = None
+    in200_nonstylized_std = None
+    in200_stylized_mean = None
+    in200_stylized_std = None
     for checkpoint_map in checkpoint_maps:
         # print(checkpoint_map)
-        original_loader = loader_string_format.format('original', loader_type)
+        nonstylized_loader = loader_string_format.format('nonstylized', loader_type)
         stylized_loader = loader_string_format.format('stylized', loader_type)
-        original_stats = stats[(stats.model == checkpoint_map) & (stats['dataset-split'] == original_loader)][list(map(str, activation_labels))].transpose()
+        nonstylized_stats = stats[(stats.model == checkpoint_map) & (stats['dataset-split'] == nonstylized_loader)][list(map(str, activation_labels))].transpose()
         stylized_stats = stats[(stats.model == checkpoint_map) & (stats['dataset-split'] == stylized_loader)][list(map(str, activation_labels))].transpose()
-        original_mean_column = original_stats.columns[0]
-        original_std_column = original_stats.columns[1]
+        nonstylized_mean_column = nonstylized_stats.columns[0]
+        nonstylized_std_column = nonstylized_stats.columns[1]
         stylized_mean_column = stylized_stats.columns[0]
         stylized_std_column = stylized_stats.columns[1]
-        original_mean = original_stats[original_mean_column]
+        nonstylized_mean = nonstylized_stats[nonstylized_mean_column]
         stylized_mean = stylized_stats[stylized_mean_column]
-        original_std = original_stats[original_std_column]
+        nonstylized_std = nonstylized_stats[nonstylized_std_column]
         stylized_std = stylized_stats[stylized_std_column]
-        original_row = pd.DataFrame([checkpoint_map, 'original', original_mean.mean(), original_std.mean()]).transpose()
+        nonstylized_row = pd.DataFrame([checkpoint_map, 'nonstylized', nonstylized_mean.mean(), nonstylized_std.mean()]).transpose()
         stylized_row = pd.DataFrame([checkpoint_map, 'stylized', stylized_mean.mean(), stylized_std.mean()]).transpose()
-        original_row.columns = ['model', 'dataset', 'mean', 'std']
+        nonstylized_row.columns = ['model', 'dataset', 'mean', 'std']
         stylized_row.columns = ['model', 'dataset', 'mean', 'std']
-        loader_type_stats = pd.concat([loader_type_stats, original_row, stylized_row])
+        loader_type_stats = pd.concat([loader_type_stats, nonstylized_row, stylized_row])
         if checkpoint_map == 'imagenet':
-            in_original_mean = original_mean
-            in_original_std = original_std
-        elif checkpoint_map == 'miniimagenet_with_in':
-            min_original_mean = original_mean
-            min_original_std = original_std
-        elif checkpoint_map == 'stylized_miniimagenet_with_in':
-            smin_original_mean = original_mean
-            smin_original_std = original_std
+            in_nonstylized_mean = nonstylized_mean
+            in_nonstylized_std = nonstylized_std
+        elif checkpoint_map == 'imagenet200_with_in':
+            in200_nonstylized_mean = nonstylized_mean
+            in200_nonstylized_std = nonstylized_std
+        elif checkpoint_map == 'stylized_imagenet200_with_in':
+            in200_stylized_mean = nonstylized_mean
+            in200_stylized_std = nonstylized_std
         plt.subplot(2, 3, i)
-        hist = original_mean.plot.hist(bins=10, alpha=0.5)
+        hist = nonstylized_mean.plot.hist(bins=10, alpha=0.5)
         hist = stylized_mean.plot.hist(bins=10, alpha=0.5)
         plt.title('{} {} mean'.format(loader_type, checkpoint_map))
         plt.subplot(2, 3, i+3)
-        hist = original_std.plot.hist(bins=10, alpha=0.5)
+        hist = nonstylized_std.plot.hist(bins=10, alpha=0.5)
         hist = stylized_std.plot.hist(bins=10, alpha=0.5)
         plt.title('{} {} std'.format(loader_type, checkpoint_map))
         i+=1
-    print('imagenet vs miniimagenet - mean')
-    print(scipystat.ttest_ind(in_original_mean, min_original_mean))
-    print('imagenet vs miniimagenet - std')
-    print(scipystat.ttest_ind(in_original_mean, smin_original_mean))
-    print('imagenet vs stylized miniimagenet - mean')
-    print(scipystat.ttest_ind(in_original_std, min_original_std))
-    print('imagenet vs stylized miniimagenet - std')
-    print(scipystat.ttest_ind(in_original_std, smin_original_std))
+    print('imagenet vs imagenet200 - mean')
+    print(scipystat.ttest_ind(in_nonstylized_mean, in200_nonstylized_mean))
+    print('imagenet vs imagenet200 - std')
+    print(scipystat.ttest_ind(in_nonstylized_mean, in200_stylized_mean))
+    print('imagenet vs stylized imagenet200 - mean')
+    print(scipystat.ttest_ind(in_nonstylized_std, in200_nonstylized_std))
+    print('imagenet vs stylized imagenet200 - std')
+    print(scipystat.ttest_ind(in_nonstylized_std, in200_stylized_std))
     plt.savefig('{}-similarity-plots.png'.format(loader_type))
     loader_type_stats.to_csv('{}-similarity-summary.csv'.format(loader_type), float_format='%.f')

@@ -10,7 +10,7 @@ import sys
 # modules
 from utils import *
 from dataset import *
-from vgg19min import *
+from vgg19 import *
 from betavae import *
 from score import *
 from trainer import *
@@ -152,19 +152,19 @@ def load_pair_data(dataset_names, split, target_type):
 
     return dataset, loader
 
-original_train_dataset, original_train_loader = load_data('miniimagenet', 'train')
-original_val_dataset, original_val_loader = load_data('miniimagenet', 'val')
+original_train_dataset, original_train_loader = load_data('imagenet200', 'train')
+original_val_dataset, original_val_loader = load_data('imagenet200', 'val')
 
-stylized_train_dataset, stylized_train_loader = load_data('stylized-miniimagenet-1.0', 'train')
-stylized_val_dataset, stylized_val_loader = load_data('stylized-miniimagenet-1.0', 'val')
+stylized_train_dataset, stylized_train_loader = load_data('stylized-imagenet200-1.0', 'train')
+stylized_val_dataset, stylized_val_loader = load_data('stylized-imagenet200-1.0', 'val')
 
-bilateral_original_train_dataset, bilateral_original_train_loader = load_data('miniimagenet', 'train',
+bilateral_original_train_dataset, bilateral_original_train_loader = load_data('imagenet200', 'train',
     train_transforms=bilateral_train_transforms, test_transforms=bilateral_test_transforms)
-bilateral_original_val_dataset, bilateral_original_val_loader = load_data('miniimagenet', 'val',
+bilateral_original_val_dataset, bilateral_original_val_loader = load_data('imagenet200', 'val',
     train_transforms=bilateral_train_transforms, test_transforms=bilateral_test_transforms)
 
-_, nonstylized_nonstylized_loader = load_pair_data(['stylized-miniimagenet-0.0', 'stylized-miniimagenet-1.0'],
-                            'train', 'min')
+_, nonstylized_nonstylized_loader = load_pair_data(['stylized-imagenet200-0.0', 'stylized-imagenet200-1.0'],
+                            'train', 'nonstylized')
 
 # celeba_dataset = CelebADataset('./space/datasets/CelebA/img_align_celeba', transforms=betavae_transforms)
 # celeba_loader = DataLoader(celeba_dataset, batch_size=config.batchSize, shuffle=True,
@@ -179,10 +179,10 @@ for dataset, loader in [
     print('{} Datapoints in {} Batches'.format(len(dataset), len(loader)))
 
 dataset_names = [
-    'stylized-miniimagenet-1.0', 'stylized-miniimagenet-0.9', 'stylized-miniimagenet-0.8',
-    'stylized-miniimagenet-0.7', 'stylized-miniimagenet-0.6', 'stylized-miniimagenet-0.5',
-    'stylized-miniimagenet-0.4', 'stylized-miniimagenet-0.3', 'stylized-miniimagenet-0.2',
-    'stylized-miniimagenet-0.1', 'stylized-miniimagenet-0.0', 'miniimagenet'
+    'stylized-imagenet200-1.0', 'stylized-imagenet200-0.9', 'stylized-imagenet200-0.8',
+    'stylized-imagenet200-0.7', 'stylized-imagenet200-0.6', 'stylized-imagenet200-0.5',
+    'stylized-imagenet200-0.4', 'stylized-imagenet200-0.3', 'stylized-imagenet200-0.2',
+    'stylized-imagenet200-0.1', 'stylized-imagenet200-0.0', 'imagenet200'
 ]
 
 # In[4]: Setup Models
@@ -195,18 +195,12 @@ supported_models = {
     # baseline
     'vgg19_vanilla_tune_fc': create_vgg19_vanilla_tune_fc, # Vanilla (No Norm)
     # normalization
-    'vgg19_bn_all_tune_fc': create_vgg19_bn_all_tune_fc, # Batch Norm - vgg19_bn_all_tune_fc_confirm
-    'vgg19_bn_all_tune_all': create_vgg19_bn_all_tune_all, # Batch Norm Alt - vgg19_bn_all_tune_all_confirm
-    'vgg19_bn_in_single_tune_all': create_vgg19_bn_in_single_tune_all, # Batch Norm with Single IN - vgg19_bn_in_single_tune_all_confirm
-    'vgg19_in_all_tune_all': create_vgg19_in_all_tune_all, # Instance Norm - vgg19_in_all_tune_all_confirm
-    'vgg19_in_single_tune_after': create_vgg19_in_single_tune_after,
+    'vgg19_bn_all_tune_fc': create_vgg19_bn_all_tune_fc, # Batch Norm
+    'vgg19_bn_in_single_tune_all': create_vgg19_bn_in_single_tune_all, # Batch Norm with Single IN
+    'vgg19_in_all_tune_all': create_vgg19_in_all_tune_all, # Instance Norm
     'vgg19_in_single_tune_all': create_vgg19_in_single_tune_all, # Single IN
-    'vgg19_in_affine_single_tune_all': create_vgg19_in_affine_single_tune_all, # Single IN with Affine - vgg19_in_affine_single_tune_all_confirm
-    'vgg19_in_bs_single_tune_after': create_vgg19_in_bs_single_tune_after,
-    'vgg19_in_bs_single_tune_after_eval': create_vgg19_in_bs_eval,
-    'vgg19_in_bs_single_tune_all': create_vgg19_in_bs_single_tune_all,
-    'vgg19_in_bs_single_tune_all_eval': create_vgg19_in_bs_eval,
-    'vgg19_in_bs_all_tune_all': create_vgg19_in_bs_all_tune_all, # IN-SM - vgg19_in_bs_all_tune_all_confirm
+    'vgg19_in_affine_single_tune_all': create_vgg19_in_affine_single_tune_all, # Single IN with Affine
+    'vgg19_in_sm_all_tune_all': create_vgg19_in_sm_all_tune_all, # IN-SM
     # similarity
     'vgg19_vanilla_similarity_0.04_tune_all': create_vgg19_vanilla_similarity_tune_all,
     'vgg19_in_single_similarity_0.04_tune_all': create_vgg19_in_single_similarity_tune_all,
@@ -219,9 +213,9 @@ supported_models = {
     'vgg19_in_all_tune_all_bilateral': create_vgg19_in_all_tune_all,
     'vgg19_in_single_tune_all_bilateral': create_vgg19_in_single_tune_all,
     'vgg19_in_affine_single_tune_all_bilateral': create_vgg19_in_affine_single_tune_all,
-    'vgg19_in_bs_all_tune_all_bilateral': create_vgg19_in_bs_all_tune_all,
+    'vgg19_in_sm_all_tune_all_bilateral': create_vgg19_in_sm_all_tune_all,
     # latent representation
-    'vae{}_beta{}_min'.format(config.zdim, config.beta): create_betavae(config.zdim),
+    'vae{}_beta{}_nonstylized'.format(config.zdim, config.beta): create_betavae(config.zdim),
     # feature + latent
     # 'vgg19_in_single_tune_all_vae_highpass': create_vgg19_vae_support(
     #     'vgg19_in_single_tune_all', 'vgg19_variational_autoencoder_highpass',
@@ -255,9 +249,9 @@ if config.train:
         model = models[model_name]()
         if 'vae' in model_name:
             target_type = model_name.split('_')[-1]
-            _, pair_train_loader = load_pair_data(['stylized-miniimagenet-0.0', 'stylized-miniimagenet-1.0'],
+            _, pair_train_loader = load_pair_data(['stylized-imagenet200-0.0', 'stylized-imagenet200-1.0'],
                                         'train', target_type)
-            _, pair_val_loader = load_pair_data(['stylized-miniimagenet-0.0', 'stylized-miniimagenet-1.0'],
+            _, pair_val_loader = load_pair_data(['stylized-imagenet200-0.0', 'stylized-imagenet200-1.0'],
                                         'val', target_type)
             run_autoencoder(
                 model_name,

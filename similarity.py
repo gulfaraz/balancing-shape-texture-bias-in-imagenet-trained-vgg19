@@ -11,7 +11,7 @@ import pandas as pd
 # modules
 from utils import *
 from dataset import *
-from vgg19min import *
+from vgg19 import *
 
 # pytorch
 import torch
@@ -61,7 +61,7 @@ train_transforms = transforms.Compose([
 ])
 
 test_transforms = transforms.Compose([
-    transforms.Resize(256),
+    transforms.Resize(roundUp(IMAGE_SIZE[0])),
     transforms.CenterCrop(IMAGE_SIZE),
     transforms.ToTensor(),
     normalize
@@ -73,32 +73,32 @@ def load_data(dataset_name, split):
     istrain = split == 'train'
     transforms = train_transforms if istrain else test_transforms
 
-    dataset = MiniImageNetDataset(dataset_path, split=split, transforms=transforms)#raw_transforms)
+    dataset = ImageNet200Dataset(dataset_path, split=split, transforms=transforms)#raw_transforms)
     loader = DataLoader(dataset, batch_size=config.batchSize, shuffle=istrain, num_workers=config.numberOfWorkers)
 
     print('{} dataset {} has {} datapoints in {} batches'.format(split, dataset_name, len(dataset), len(loader)))
 
     return dataset, loader
 
-original_train_dataset, original_train_loader = load_data('miniimagenet', 'train')
-original_val_dataset, original_val_loader = load_data('miniimagenet', 'val')
+nonstylized_train_dataset, nonstylized_train_loader = load_data('imagenet200', 'train')
+nonstylized_val_dataset, nonstylized_val_loader = load_data('imagenet200', 'val')
 
-stylized_train_dataset, stylized_train_loader = load_data('stylized-miniimagenet-1.0', 'train')
-stylized_val_dataset, stylized_val_loader = load_data('stylized-miniimagenet-1.0', 'val')
+stylized_train_dataset, stylized_train_loader = load_data('stylized-imagenet200-1.0', 'train')
+stylized_val_dataset, stylized_val_loader = load_data('stylized-imagenet200-1.0', 'val')
 
 for dataset, loader in [
-    (original_train_dataset, original_train_loader),
-    (original_val_dataset, original_val_loader),
+    (nonstylized_train_dataset, nonstylized_train_loader),
+    (nonstylized_val_dataset, nonstylized_val_loader),
     (stylized_train_dataset, stylized_train_loader),
     (stylized_val_dataset, stylized_val_loader)
 ]:
     print('{} Datapoints in {} Batches'.format(len(dataset), len(loader)))
 
 dataset_names = [
-    'stylized-miniimagenet-1.0', 'stylized-miniimagenet-0.9', 'stylized-miniimagenet-0.8',
-    'stylized-miniimagenet-0.7', 'stylized-miniimagenet-0.6', 'stylized-miniimagenet-0.5',
-    'stylized-miniimagenet-0.4', 'stylized-miniimagenet-0.3', 'stylized-miniimagenet-0.2',
-    'stylized-miniimagenet-0.1', 'stylized-miniimagenet-0.0', 'miniimagenet'
+    'stylized-imagenet200-1.0', 'stylized-imagenet200-0.9', 'stylized-imagenet200-0.8',
+    'stylized-imagenet200-0.7', 'stylized-imagenet200-0.6', 'stylized-imagenet200-0.5',
+    'stylized-imagenet200-0.4', 'stylized-imagenet200-0.3', 'stylized-imagenet200-0.2',
+    'stylized-imagenet200-0.1', 'stylized-imagenet200-0.0', 'imagenet200'
 ]
 
 def epoch(model, loader, device):
@@ -107,8 +107,8 @@ def epoch(model, loader, device):
         model(batch[index_image].to(device))
 
 checkpoint_map = {
-    'miniimagenet_with_in': 'vgg19_in_single_tune_after',
-    'stylized_miniimagenet_with_in': 'stylized_vgg19_in_single_tune_after'
+    'imagenet200_with_in': 'vgg19_in_single_tune_after',
+    'stylized_imagenet200_with_in': 'stylized_vgg19_in_single_tune_after'
 }
 
 def load_model(model, model_name):
@@ -119,14 +119,14 @@ def load_model(model, model_name):
 
 def load_run_model_epoch(model_name, loader, dataset_name):
     file_path = os.path.join('csv', '{}-{}'.format(model_name, dataset_name))
-    model = create_vgg19_in_bs_single_similarity(filename=file_path)
+    model = create_vgg19_in_sm_single_similarity(filename=file_path)
     if model_name != 'imagenet':
         load_model(model, model_name)
     epoch(model, loader, config.device)
 
-names = ['original_val_loader', 'stylized_val_loader', 'original_train_loader', 'stylized_train_loader']
+names = ['nonstylized_val_loader', 'stylized_val_loader', 'nonstylized_train_loader', 'stylized_train_loader']
 
-for index, loader in enumerate([original_val_loader, stylized_val_loader, original_train_loader, stylized_train_loader]):
+for index, loader in enumerate([nonstylized_val_loader, stylized_val_loader, nonstylized_train_loader, stylized_train_loader]):
     load_run_model_epoch('imagenet', loader, names[index])
-    load_run_model_epoch('miniimagenet_with_in', loader, names[index])
-    load_run_model_epoch('stylized_miniimagenet_with_in', loader, names[index])
+    load_run_model_epoch('imagenet200_with_in', loader, names[index])
+    load_run_model_epoch('stylized_imagenet200_with_in', loader, names[index])

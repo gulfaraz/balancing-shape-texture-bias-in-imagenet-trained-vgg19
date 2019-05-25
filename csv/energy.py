@@ -1,7 +1,7 @@
 import pandas as pd
 
 energy_filename = 'energy.csv'
-datasets = [ 'original', 'stylized' ]
+datasets = [ 'nonstylized', 'stylized' ]
 image_transforms = [ 'raw', 'blur', 'bilateral' ]
 energy_types = [ 'absolute', 'actual' ]
 energy_set_labels = [
@@ -64,10 +64,10 @@ for energy_type in energy_types:
         diff_stats = filtered_stats.diff(axis=1)
         diff_mean = diff_stats[diff_stats.columns[1]]
         diff_std = diff_stats[diff_stats.columns[3]]
-        original_mean = filtered_stats[filtered_stats.columns[0]]
-        original_std = filtered_stats[filtered_stats.columns[2]]
-        changed_mean = 100 * diff_mean / original_mean
-        changed_std = 100 * diff_std / original_std
+        nonstylized_mean = filtered_stats[filtered_stats.columns[0]]
+        nonstylized_std = filtered_stats[filtered_stats.columns[2]]
+        changed_mean = 100 * diff_mean / nonstylized_mean
+        changed_std = 100 * diff_std / nonstylized_std
         stat = pd.concat([changed_mean, changed_std], axis=1)
         stat.columns = ['{}-mean'.format(image_transform), '{}-std'.format(image_transform)]
         energy_type_stats = pd.concat([energy_type_stats, stat], axis=1)

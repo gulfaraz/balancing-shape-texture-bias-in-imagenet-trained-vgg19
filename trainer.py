@@ -187,7 +187,7 @@ def train(model, dataloader, criterion, optimizer, logger, device, similarity_we
 
 def run(model_name, model, model_directory, number_of_epochs, learning_rate, logger,
         train_loader, val_loader, device, similarity_weight=None,
-        dataset_names=['miniimagenet', 'stylized-miniimagenet-1.0'], load_data=None):
+        dataset_names=['stylized-imagenet200-0.0', 'stylized-imagenet200-1.0'], load_data=None):
     checkpoint_path = pathJoin(model_directory, '{}.ckpt'.format(model_name))
     print(checkpoint_path)
 

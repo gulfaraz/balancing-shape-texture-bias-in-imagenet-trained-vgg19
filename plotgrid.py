@@ -1,8 +1,5 @@
 from matplotlib import pyplot as plt
 
-def hello():
-    print('hello')
-
 class PlotGrid:
     def __init__(self, figsize=None):
         self.fig = plt.figure(figsize=figsize)
