@@ -191,7 +191,11 @@ def run(model_name, model, model_directory, number_of_epochs, learning_rate, log
     checkpoint_path = pathJoin(model_directory, '{}.ckpt'.format(model_name))
     print(checkpoint_path)
 
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+    parameters = model.parameters()
+    if 'classifier' in model_name:
+        parameters = model.classifier.parameters()
+
+    optimizer = torch.optim.SGD(parameters, lr=learning_rate, momentum=0.9)
 
     lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=5, min_lr=1e-5)
     

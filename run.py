@@ -216,6 +216,27 @@ supported_models = {
     'vgg19_in_sm_all_tune_all_bilateral': create_vgg19_in_sm_all_tune_all,
     # latent representation
     'vae{}_beta{}_nonstylized'.format(config.zdim, config.beta): create_betavae(config.zdim),
+    # latent classifier
+    'classifier_z32_beta0.0': create_betavae_classifier(
+        pathJoin(model_directory, 'vae32_beta0.0_nonstylized.ckpt'), 32, config.device),
+    'classifier_z32_beta0.2': create_betavae_classifier(
+        pathJoin(model_directory, 'vae32_beta0.2_nonstylized.ckpt'), 32, config.device),
+    'classifier_z32_beta1.0': create_betavae_classifier(
+        pathJoin(model_directory, 'vae32_beta1.0_nonstylized.ckpt'), 32, config.device),
+    'classifier_z32_beta10.0': create_betavae_classifier(
+        pathJoin(model_directory, 'vae32_beta10.0_nonstylized.ckpt'), 32, config.device),
+    'classifier_z32_beta100.0': create_betavae_classifier(
+        pathJoin(model_directory, 'vae32_beta100.0_nonstylized.ckpt'), 32, config.device),
+    'classifier_z128_beta0.0': create_betavae_classifier(
+        pathJoin(model_directory, 'vae128_beta0.0_nonstylized.ckpt'), 128, config.device),
+    'classifier_z128_beta0.2': create_betavae_classifier(
+        pathJoin(model_directory, 'vae128_beta0.2_nonstylized.ckpt'), 128, config.device),
+    'classifier_z128_beta1.0': create_betavae_classifier(
+        pathJoin(model_directory, 'vae128_beta1.0_nonstylized.ckpt'), 128, config.device),
+    'classifier_z128_beta10.0': create_betavae_classifier(
+        pathJoin(model_directory, 'vae128_beta10.0_nonstylized.ckpt'), 128, config.device),
+    'classifier_z128_beta100.0': create_betavae_classifier(
+        pathJoin(model_directory, 'vae128_beta100.0_nonstylized.ckpt'), 128, config.device),
     # feature + latent
     # 'vgg19_in_single_tune_all_vae_highpass': create_vgg19_vae_support(
     #     'vgg19_in_single_tune_all', 'vgg19_variational_autoencoder_highpass',

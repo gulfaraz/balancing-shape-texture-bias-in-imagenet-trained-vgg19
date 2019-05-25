@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import torch.nn.init as init
@@ -88,7 +89,31 @@ class BetaVAE_H(nn.Module):
         return self.decoder(z)
 
 
+class BetaVAE_H_CLASSIFIER(BetaVAE_H):
+    def __init__(self, vae_checkpoint_path, z_dim=10, nc=3, device='cuda:0'):
+        super(BetaVAE_H_CLASSIFIER, self).__init__(z_dim=z_dim, nc=nc)
+
+        if os.path.isfile(vae_checkpoint_path):
+            checkpoint = torch.load(vae_checkpoint_path, map_location=device)
+            self.load_state_dict(checkpoint['weights'])
+        else:
+            raise ValueError('Checkpoint Not Found: {}'.format(vae_checkpoint_path))
+
+        self.classifier = nn.Linear(z_dim, 200)
+    
+    def forward(self, x):
+        with torch.no_grad():
+            encoded_x = self._encode(x)
+            encoded_x = encoded_x[:, :self.z_dim] # take the mean
+        return self.classifier(encoded_x)
+
+
 def create_betavae(z_dim):
     def initialize_betavae():
         return BetaVAE_H(z_dim, 3)
     return initialize_betavae
+
+def create_betavae_classifier(vae_checkpoint_path, z_dim, device):
+    def initialize_betavae_classifier():
+        return BetaVAE_H_CLASSIFIER(vae_checkpoint_path, z_dim=z_dim, nc=3, device=device)
+    return initialize_betavae_classifier
