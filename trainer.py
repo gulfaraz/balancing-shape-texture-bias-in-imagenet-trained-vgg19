@@ -275,10 +275,11 @@ def validate_autoencoder(model, loader, logger, device, filename, beta):
         # loss
         reconstruction_loss = calculate_reconstruction_loss(batch_target, batch_output)
         total_kld, dim_wise_kld, mean_kld = calculate_kl_divergence(mu, logvar)
-        batch_loss = reconstruction_loss + (beta * total_kld)
+        effective_kl = beta * total_kld
+        batch_loss = reconstruction_loss + effective_kl
 
-        logger.debug('Batch Loss: {} Reconstruction Loss: {:.4f} KL-Divergence: {:.4f} Mean-KLD: {:.4f}'.format(
-            batch_loss.item(), reconstruction_loss.item(), total_kld.item(), mean_kld.item()))
+        logger.debug('Batch Loss: {} Reconstruction Loss: {:.4f} KL-Divergence: {:.4f} Effective-KL {:.4f} Mean-KLD: {:.4f}'.format(
+            batch_loss.item(), reconstruction_loss.item(), total_kld.item(), effective_kl.item(), mean_kld.item()))
 
         loss.append(batch_loss.item())
 
@@ -312,10 +313,11 @@ def train_autoencoder(model, loader, optimizer, logger, device, beta, grad_clip_
         # loss
         reconstruction_loss = calculate_reconstruction_loss(batch_target, batch_output)
         total_kld, dim_wise_kld, mean_kld = calculate_kl_divergence(mu, logvar)
-        batch_loss = reconstruction_loss + (beta * total_kld)
+        effective_kl = beta * total_kld
+        batch_loss = reconstruction_loss + effective_kl
 
-        logger.debug('Batch Loss: {} Reconstruction Loss: {:.4f} KL-Divergence: {:.4f} Mean-KLD: {:.4f}'.format(
-            batch_loss.item(), reconstruction_loss.item(), total_kld.item(), mean_kld.item()))
+        logger.debug('Batch Loss: {} Reconstruction Loss: {:.4f} KL-Divergence: {:.4f} Effective-KL {:.4f} Mean-KLD: {:.4f}'.format(
+            batch_loss.item(), reconstruction_loss.item(), total_kld.item(), effective_kl.item(), mean_kld.item()))
 
         loss.append(batch_loss.item())
 
