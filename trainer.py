@@ -265,7 +265,7 @@ def run(model_name, model, model_directory, number_of_epochs, learning_rate, log
 
 # In[4]: Autoencoder
 
-def validate_autoencoder(model, loader, logger, device, filename, beta, gamma, criterion):
+def validate_autoencoder(model, loader, logger, device, filename, beta, gamma, criterion, save_reconstruction):
     logger.debug('Validation Start')
     model.eval()
 
@@ -309,7 +309,7 @@ def validate_autoencoder(model, loader, logger, device, filename, beta, gamma, c
         top1_score = score_value(total_top1, total_)
         top5_score = score_value(total_top5, total_)
 
-        if batch_index == 0:
+        if batch_index == 0 and save_reconstruction:
             n = min(batch_reconstruction_target.size(0), 8)
             comparison = torch.cat([batch_reconstruction_target[:n],
                 batch_reconstruction.view(*batch_reconstruction_target.shape)[:n]])
@@ -424,19 +424,21 @@ def run_autoencoder(model_name, model, model_directory, number_of_epochs,
         image_filename = pathJoin(image_directory, 'reconstructed_epoch_{}.png'.format(epoch))
 
         validation_top1_accuracy, validation_top5_accuracy, validation_loss = validate_autoencoder(
-            model, val_loader, logger, device, image_filename, beta, gamma, criterion)
+            model, val_loader, logger, device, image_filename, beta, gamma, criterion, ((epoch % 10) == 0))
 
-        with torch.no_grad():
-            z = torch.randn(64, model.z_dim).to(device)
-            sample = model._decode(z).cpu()
-            sample_filename = pathJoin(image_directory, 'generated_epoch_{}.png'.format(epoch))
-            save_image(sample.view(64, 3, image_size, image_size), sample_filename, normalize=False)
         logger.info('Epoch {}: Train: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(
             epoch, train_loss, train_top1_accuracy, train_top5_accuracy) \
             + ' Validation: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(
                 validation_loss, validation_top1_accuracy, validation_top5_accuracy))
 
-        explore_betavae(model_name, model, image_directory, epoch, val_loader, device)
+        if epoch % 10 == 0:
+            with torch.no_grad():
+                z = torch.randn(64, model.z_dim).to(device)
+                sample = model._decode(z).cpu()
+                sample_filename = pathJoin(image_directory, 'generated_epoch_{}.png'.format(epoch))
+                save_image(sample.view(64, 3, image_size, image_size), sample_filename, normalize=False)
+
+            explore_betavae(model_name, model, image_directory, epoch, val_loader, device)
 
         logger.debug('Saving new weights')
         os.makedirs(model_directory, exist_ok=True)
