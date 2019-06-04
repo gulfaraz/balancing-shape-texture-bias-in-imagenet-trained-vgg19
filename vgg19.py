@@ -4,11 +4,12 @@ import torchvision.models as models
 from instancenormbatchswap import InstanceNormBatchSwap, InstanceNormSimilarity
 from utils import init_weights, pathJoin
 import os
+from betavae import BetaVAE_H
 
 
-def create_imagenet200_classifier(dim_multiplier=1):
+def create_imagenet200_classifier(in_feature_size=25088):
     return torch.nn.Sequential(
-        torch.nn.Linear(in_features=(25088 * dim_multiplier), out_features=4096, bias=True),
+        torch.nn.Linear(in_features=in_feature_size, out_features=4096, bias=True),
         torch.nn.ReLU(inplace=True),
         torch.nn.Dropout(p=0.5),
         torch.nn.Linear(in_features=4096, out_features=4096, bias=True),
@@ -456,74 +457,48 @@ def create_vgg19_in_sm_single_similarity(filename):
 
 
 class VGG_IN_VAE(torch.nn.Module):
-    def __init__(self, classification_model, autoencoder_model):
+    def __init__(self, classification_model, autoencoder_model, vae_transforms, z_dim=128, feature_dim=25088):
         super(VGG_IN_VAE, self).__init__()
-        self.classification_network = self.classification_feature_extractor(classification_model)
-        # # disable params
-        # for name, param in self.classification_model.features1.named_parameters():
-        #     param.requires_grad = False
-        # if hasattr(self.classification_model, 'instance_normalization'):
-        #     for name, param in self.classification_model.instance_normalization.named_parameters():
-        #         param.requires_grad = False
-        # for name, param in self.classification_model.features2.named_parameters():
-        #     param.requires_grad = False
-        # self.classification_model.eval()
-        # self.autoencoder_model = autoencoder_model
-        # self.autoencoder_model.eval()
-        # self.autoencoder_model.set_mode('eval')
-        self.autoencoder_network = self.autoencoder_feature_extractor(autoencoder_model)
-        self.classifier = create_imagenet200_classifier(2)
+        self.z_dim = z_dim
+        self.feature_dim = feature_dim
+        self.get_features = self.create_feature_extractor(classification_model)
+        self.get_latents = self.create_latent_extractor(autoencoder_model)
+        self.classifier = create_imagenet200_classifier(self.feature_dim + self.z_dim)
+        self.vae_transforms = vae_transforms
 
     def forward(self, x):
         with torch.no_grad():
-            classification_features = self.classification_network(x)
-            print(classification_features.shape)
-            autoencoder_features = self.autoencoder_network(x)
-            print(autoencoder_features.shape)
-
-        # print('classifier params')
-        classifier_input = torch.cat([classification_features, autoencoder_features], dim=1)
-        # for name, param in self.classifier.named_parameters():
-        #     print(name, param.requires_grad)
-        # print(classifier_input.shape)
-        output = self.classifier(classifier_input)
-        # print(output.shape)
-
+            features = self.get_features(x)
+            latents = self.get_latents(self.convert_input(x))
+        combined = torch.cat([features, latents], dim=1)
+        output = self.classifier(combined)
         return output
     
-    def classification_feature_extractor(self, classification_model):
+    def create_feature_extractor(self, classification_model):
         def feature_extractor(x):
-            # print('classification params')
-            # for name, param in self.classification_model.features1.named_parameters():
-            #     print(name, param.requires_grad)
-            classification_features = classification_model.features1(x)
-            if hasattr(classification_model, 'instance_normalization'):
-                classification_features = classification_model.instance_normalization(classification_features)
-                # for name, param in self.classification_model.instance_normalization.named_parameters():
-                #     print(name, param.requires_grad)
-            classification_features = classification_model.features2(classification_features)
-            # for name, param in self.classification_model.features2.named_parameters():
-            #     print(name, param.requires_grad)
-            classification_features = classification_features.view(classification_features.size(0), -1)
-            # print(classification_features.shape)
-            return classification_features
+            with torch.no_grad():
+                features = classification_model.features1(x)
+                if hasattr(classification_model, 'instance_normalization'):
+                    features = classification_model.instance_normalization(features)
+                features = classification_model.features2(features)
+                features = features.view(features.size(0), -1)
+            return features
         return feature_extractor
     
-    def autoencoder_feature_extractor(self, autoencoder_model):
-        def feature_extractor(x):
-            # print('autoencoder params')
-            autoencoder_features, _ = autoencoder_model.encode(x)
-            # for name, param in self.autoencoder_model.encoder.named_parameters():
-            #     print(name, param.requires_grad)
-            autoencoder_features = autoencoder_features.view(autoencoder_features.size(0), -1)
-            # print(autoencoder_features.shape)
-            return autoencoder_features
-        return feature_extractor
+    def create_latent_extractor(self, autoencoder_model):
+        def latent_extractor(x):
+            with torch.no_grad():
+                encoded_x = autoencoder_model._encode(x)
+                encoded_x = encoded_x[:, :self.z_dim] # take the mean
+            return encoded_x
+        return latent_extractor
+    
+    def convert_input(self, x):
+        return torch.stack([ self.vae_transforms(_) for _ in x.cpu() ], dim=0).cuda()
 
-def create_vgg19_vae_support(classification_modelname, autoencoder_modelname, model_directory, device):
+def create_feature_latent_classifier(classification_modelname, autoencoder_modelname, z_dim, model_directory, device, vae_transforms):
     def assemble_model():
         classification_model = create_vgg19_in_single_tune_all()
-        autoencoder_model = create_vgg19_variational_autoencoder()
         # load trained classifier
         classification_model_checkpoint_path = pathJoin(model_directory, '{}.ckpt'.format(classification_modelname))
         if os.path.isfile(classification_model_checkpoint_path):
@@ -534,13 +509,70 @@ def create_vgg19_vae_support(classification_modelname, autoencoder_modelname, mo
             raise ValueError('Classification Model not found at: {}'.format(classification_model_checkpoint_path))
         # load trained vae
         autoencoder_model_checkpoint_path = pathJoin(model_directory, '{}.ckpt'.format(autoencoder_modelname))
+        autoencoder_model = BetaVAE_H(z_dim=z_dim, nc=3)
         if os.path.isfile(autoencoder_model_checkpoint_path):
             autoencoder_model.load_state_dict(
                 torch.load(autoencoder_model_checkpoint_path, map_location=device)['weights'])
             autoencoder_model.eval()
         else:
             raise ValueError('Autoencoder Model not found at: {}'.format(autoencoder_model_checkpoint_path))
-        twin_model = VGG_IN_VAE(classification_model, autoencoder_model)
-        print(twin_model)
+        twin_model = VGG_IN_VAE(classification_model, autoencoder_model, vae_transforms, z_dim=z_dim)
         return twin_model
+    return assemble_model
+
+
+class VGG_IN_LATENT(VGG_IN):
+    def __init__(self, layer_index, autoencoder_model, vae_transforms,
+        instance_normalization_function=None, affine=False,
+        pretrained=False, z_dim=128, feature_dim=25088):
+        super(VGG_IN_LATENT, self).__init__(layer_index,
+            instance_normalization_function=instance_normalization_function, affine=affine, pretrained=pretrained)
+        self.z_dim = z_dim
+        self.feature_dim = feature_dim
+        self.get_latents = self.create_latent_extractor(autoencoder_model)
+        self.classifier = create_imagenet200_classifier(self.feature_dim + self.z_dim)
+        self.vae_transforms = vae_transforms
+
+    def forward(self, x):
+        x = self.features1(x)
+        if hasattr(self, 'instance_normalization'):
+            x = self.instance_normalization(x)
+        x = self.features2(x)
+        features = x.view(x.size(0), -1)
+        with torch.no_grad():
+            latents = self.get_latents(self.convert_input(x))
+        combined = torch.cat([features, latents], dim=1)
+        output = self.classifier(combined)
+        return output
+    
+    def create_latent_extractor(self, autoencoder_model):
+        def latent_extractor(x):
+            with torch.no_grad():
+                encoded_x = autoencoder_model._encode(x)
+                encoded_x = encoded_x[:, :self.z_dim] # take the mean
+            return encoded_x
+        return latent_extractor
+    
+    def convert_input(self, x):
+        return torch.stack([ self.vae_transforms(_) for _ in x.cpu() ], dim=0).cuda()
+
+
+def create_vgg19_in_single_tune_all_with_latent(autoencoder_model_checkpoint_path, z_dim, device, vae_transforms):
+    def assemble_model():
+        # load trained vae
+        autoencoder_model = BetaVAE_H(z_dim=z_dim, nc=3)
+        if os.path.isfile(autoencoder_model_checkpoint_path):
+            autoencoder_model.load_state_dict(
+                torch.load(autoencoder_model_checkpoint_path, map_location=device)['weights'])
+            autoencoder_model.eval()
+        else:
+            raise ValueError('Autoencoder Model not found at: {}'.format(autoencoder_model_checkpoint_path))
+
+        vgg = VGG_IN_LATENT(21, autoencoder_model, vae_transforms, instance_normalization_function=torch.nn.InstanceNorm2d, pretrained=True, z_dim=z_dim)
+
+        # train all layers
+        for param in vgg.parameters():
+            param.requires_grad = True
+
+        return vgg
     return assemble_model

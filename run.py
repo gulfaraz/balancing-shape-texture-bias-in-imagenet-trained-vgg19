@@ -97,16 +97,18 @@ vae_transforms = transforms.Compose([
     transforms.ToTensor()
 ])
 
+convert_to_vae_transforms = transforms.Compose([
+    denormalize,
+    transforms.ToPILImage(),
+    transforms.Resize(VAE_IMAGE_SIZE),
+    transforms.ToTensor()
+])
+
 highpass_transforms = transforms.Compose([
     transforms.CenterCrop(IMAGE_SIZE),
     transforms.Grayscale(num_output_channels=3),
     transforms.ToTensor(),
-    transforms.Normalize(mean=[0.5, 0.5, 0.5],
-                        std=[0.225, 0.225, 0.225]),
-    lambda x: x>-1.5,
-    lambda x: x.float(),
-    transforms.Normalize(mean=[0.5, 0.5, 0.5],
-                        std=[0.225, 0.225, 0.225])
+    lambda x: (x > 0.2).float()
 ])
 
 def load_data(dataset_name, split, train_transforms=train_transforms, test_transforms=test_transforms):
@@ -166,10 +168,6 @@ bilateral_original_val_dataset, bilateral_original_val_loader = load_data('image
 _, nonstylized_nonstylized_loader = load_pair_data(['stylized-imagenet200-0.0', 'stylized-imagenet200-1.0'],
                             'train', 'nonstylized')
 
-# celeba_dataset = CelebADataset('./space/datasets/CelebA/img_align_celeba', transforms=betavae_transforms)
-# celeba_loader = DataLoader(celeba_dataset, batch_size=config.batchSize, shuffle=True,
-#                         num_workers=config.numberOfWorkers, drop_last=True)
-
 for dataset, loader in [
     (original_train_dataset, original_train_loader),
     (original_val_dataset, original_val_loader),
@@ -190,6 +188,11 @@ dataset_names = [
 # models directory
 model_directory = pathJoin(config.rootPath, 'models')
 
+vae_model_name = '{}_beta{}_gamma{}'.format(config.zdim, config.beta, config.gamma)
+vae_checkpoint_model_name = 'vae{}'.format(vae_model_name)
+vae_checkpoint_model_name = 'bilateral_{}'.format(vae_checkpoint_model_name) if config.bilateral else vae_checkpoint_model_name
+vae_checkpoint_model_name = '{}_{}'.format(config.dataset, vae_checkpoint_model_name)
+vae_model_checkpoint_path = pathJoin(model_directory, '{}.ckpt'.format(vae_checkpoint_model_name))
 
 supported_models = {
     # baseline
@@ -206,43 +209,23 @@ supported_models = {
     'vgg19_in_single_similarity_0.04_tune_all': create_vgg19_in_single_similarity_tune_all,
     'vgg19_bn_all_similarity_tune_fc': create_vgg19_bn_all_similarity_tune_fc,
     'vgg19_bn_all_similarity_tune_all': create_vgg19_bn_all_similarity_tune_all,
-    # bilateral
-    'vgg19_vanilla_tune_fc_bilateral': create_vgg19_vanilla_tune_fc,
-    'vgg19_bn_all_tune_fc_bilateral': create_vgg19_bn_all_tune_fc,
-    'vgg19_bn_in_single_tune_all_bilateral': create_vgg19_bn_in_single_tune_all,
-    'vgg19_in_all_tune_all_bilateral': create_vgg19_in_all_tune_all,
-    'vgg19_in_single_tune_all_bilateral': create_vgg19_in_single_tune_all,
-    'vgg19_in_affine_single_tune_all_bilateral': create_vgg19_in_affine_single_tune_all,
-    'vgg19_in_sm_all_tune_all_bilateral': create_vgg19_in_sm_all_tune_all,
     # latent representation
-    'vae{}_beta{}_gamma{}_nonstylized'.format(
-        config.zdim, config.beta, config.gamma): create_betavae(config.zdim),
-    # latent classifier
-    'classifier_z32_beta0.0': create_betavae_classifier(
-        pathJoin(model_directory, 'vae32_beta0.0_nonstylized.ckpt'), 32, config.device),
-    'classifier_z32_beta0.2': create_betavae_classifier(
-        pathJoin(model_directory, 'vae32_beta0.2_nonstylized.ckpt'), 32, config.device),
-    'classifier_z32_beta1.0': create_betavae_classifier(
-        pathJoin(model_directory, 'vae32_beta1.0_nonstylized.ckpt'), 32, config.device),
-    'classifier_z32_beta10.0': create_betavae_classifier(
-        pathJoin(model_directory, 'vae32_beta10.0_nonstylized.ckpt'), 32, config.device),
-    'classifier_z32_beta100.0': create_betavae_classifier(
-        pathJoin(model_directory, 'vae32_beta100.0_nonstylized.ckpt'), 32, config.device),
-    'classifier_z128_beta0.0': create_betavae_classifier(
-        pathJoin(model_directory, 'vae128_beta0.0_nonstylized.ckpt'), 128, config.device),
-    'classifier_z128_beta0.2': create_betavae_classifier(
-        pathJoin(model_directory, 'vae128_beta0.2_nonstylized.ckpt'), 128, config.device),
-    'classifier_z128_beta1.0': create_betavae_classifier(
-        pathJoin(model_directory, 'vae128_beta1.0_nonstylized.ckpt'), 128, config.device),
-    'classifier_z128_beta10.0': create_betavae_classifier(
-        pathJoin(model_directory, 'vae128_beta10.0_nonstylized.ckpt'), 128, config.device),
-    'classifier_z128_beta100.0': create_betavae_classifier(
-        pathJoin(model_directory, 'vae128_beta100.0_nonstylized.ckpt'), 128, config.device),
-    # feature + latent
-    # 'vgg19_in_single_tune_all_vae_highpass': create_vgg19_vae_support(
-    #     'vgg19_in_single_tune_all', 'vgg19_variational_autoencoder_highpass',
-    #     model_directory, config.device),
+    'vae{}'.format(vae_model_name): create_betavae(config.zdim),
+    'classifier_z{}'.format(vae_model_name): create_betavae_classifier(
+        vae_model_checkpoint_path, config.zdim, config.device),
+    # train with latent
+    'latent_vgg19_in_single_tune_all': create_vgg19_in_single_tune_all_with_latent(
+        vae_model_checkpoint_path, config.zdim, config.device, convert_to_vae_transforms), # Single IN with Latent
 }
+
+selected_models = {}
+
+for model_name, model_constructor in supported_models.items():
+    selected_model_name = 'bilateral_{}'.format(model_name) if config.bilateral else model_name
+    selected_model_name = '{}_{}'.format(config.dataset, selected_model_name)
+    selected_models[selected_model_name] = model_constructor
+
+supported_models = selected_models
 
 # In[5]: Sanity Check
 
@@ -263,8 +246,6 @@ if config.train:
     os.makedirs(log_directory, exist_ok=True)
 
     for model_name in models:
-
-        # original
         logger = create_logger(log_directory, model_name)
         logger.info(' '.join(sys.argv))
         logger.info('Model Name {}'.format(model_name))
@@ -291,24 +272,26 @@ if config.train:
                 load_data=load_data
             )
         else:
+            train_loader = original_train_loader
+            val_loader = original_val_loader
+            if 'bilateral' in model_name:
+                train_loader = bilateral_original_train_loader
+                val_loader = bilateral_original_val_loader
+            elif config.dataset == 'stylized':
+                train_loader = stylized_train_loader
+                val_loader = stylized_val_loader
             run(
                 model_name, model,
                 model_directory,
                 config.numberOfEpochs,
                 config.learningRate,
                 logger,
-                bilateral_original_train_loader if 'bilateral' in model_name else original_train_loader,
-                bilateral_original_val_loader if 'bilateral' in model_name else original_val_loader, config.device,
+                train_loader,
+                val_loader,
+                config.device,
                 similarity_weight=similarity_weight if 'similarity' in model_name else None,
                 load_data=load_data
             )
-
-        # # stylized
-        # model_name = 'stylized_{}'.format(model_name)
-        # logger = create_logger(log_directory, model_name)
-        # logger.info('Run Name {}'.format(model_name))
-        # model = models[model_name]()
-        # run(model_name, model, training, epochs, monitor, logger, stylized_train_loader, stylized_val_loader)
 
         del model
         torch.cuda.empty_cache()

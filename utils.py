@@ -124,6 +124,11 @@ def configuration():
                         help='output path')
     parser.add_argument('--numberOfWorkers', type=int, default=8,
                         help='number of threads used by data loader')
+    parser.add_argument('--bilateral', action='store_true', default=False,
+                        help='apply bilateral filter at input layer')
+    parser.add_argument('--dataset', type=str, default='nonstylized',
+                        choices=['nonstylized', 'stylized', 'highpass'],
+                        help='name of dataset to use for training')
 
     parser.add_argument('--disableCuda', action='store_true',
                         help='disable the use of CUDA')
@@ -148,9 +153,9 @@ def configuration():
                         help='learning rate for classifier training')
     parser.add_argument('--beta', type=float, default=0.2,
                         help='beta value for the betavae loss')
-    parser.add_argument('--zdim', type=int, default=32,
+    parser.add_argument('--zdim', type=int, default=128,
                         help='latent space dimension size for the betavae')
-    parser.add_argument('--gamma', type=float, default=1.0,
+    parser.add_argument('--gamma', type=float, default=0.0,
                         help='weight of the classification loss in vae')
 
     parser.add_argument('--train', action='store_true', default=False,

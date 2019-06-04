@@ -18,7 +18,7 @@ def calculate_similarity_loss(similarity, kernel_sizes=[64., 128., 256., 512., 5
     return weighted_similarity.mean() + (number_of_kernels * style_weights).sum()
 
 
-def calculate_reconstruction_loss(x, x_recon, distribution='gaussian'):
+def calculate_reconstruction_loss(x, x_recon, distribution):
     batch_size = x.size(0)
     assert batch_size != 0
     sigmoid = torch.nn.Sigmoid()
@@ -29,8 +29,6 @@ def calculate_reconstruction_loss(x, x_recon, distribution='gaussian'):
         recon_loss = bce_logit_loss(x_recon, x).div(batch_size)
     elif distribution == 'gaussian':
         x_recon = sigmoid(x_recon)
-        # print('x_recon {}'.format(x_recon.shape))
-        # print('x {}'.format(x.shape))
         recon_loss = mse_loss(x_recon, x).div(batch_size)
     else:
         recon_loss = None
@@ -265,7 +263,7 @@ def run(model_name, model, model_directory, number_of_epochs, learning_rate, log
 
 # In[4]: Autoencoder
 
-def validate_autoencoder(model, loader, logger, device, filename, beta, gamma, criterion, save_reconstruction):
+def validate_autoencoder(model, loader, logger, device, filename, beta, gamma, criterion, save_reconstruction, distribution):
     logger.debug('Validation Start')
     model.eval()
 
@@ -288,7 +286,7 @@ def validate_autoencoder(model, loader, logger, device, filename, beta, gamma, c
 
         # loss
         classification_loss = criterion(batch_class_prediction, batch_classification_target)
-        reconstruction_loss = calculate_reconstruction_loss(batch_reconstruction_target, batch_reconstruction)
+        reconstruction_loss = calculate_reconstruction_loss(batch_reconstruction_target, batch_reconstruction, distribution)
         total_kld, dim_wise_kld, mean_kld = calculate_kl_divergence(mu, logvar)
         effective_kl = beta * total_kld
         effective_classification_loss = gamma * classification_loss
@@ -324,7 +322,7 @@ def validate_autoencoder(model, loader, logger, device, filename, beta, gamma, c
     logger.debug('Validation End')
     return top1_score, top5_score, mean_loss
 
-def train_autoencoder(model, loader, optimizer, logger, device, beta, gamma, criterion, grad_clip_norm_value=50):
+def train_autoencoder(model, loader, optimizer, logger, device, beta, gamma, criterion, distribution, grad_clip_norm_value=50):
     logger.debug('Training Start')
     model.train()
 
@@ -348,7 +346,7 @@ def train_autoencoder(model, loader, optimizer, logger, device, beta, gamma, cri
 
         # loss
         classification_loss = criterion(batch_class_prediction, batch_classification_target)
-        reconstruction_loss = calculate_reconstruction_loss(batch_reconstruction_target, batch_reconstruction)
+        reconstruction_loss = calculate_reconstruction_loss(batch_reconstruction_target, batch_reconstruction, distribution)
         total_kld, dim_wise_kld, mean_kld = calculate_kl_divergence(mu, logvar)
         effective_kl = beta * total_kld
         effective_classification_loss = gamma * classification_loss
@@ -416,15 +414,16 @@ def run_autoencoder(model_name, model, model_directory, number_of_epochs,
     os.makedirs(image_directory, exist_ok=True)
 
     criterion = torch.nn.CrossEntropyLoss()
+    distribution = 'bernoulli' if 'highpass' in model_name else 'gaussian'
 
     for epoch in range(last_epoch, number_of_epochs + 1):
         train_top1_accuracy, train_top5_accuracy, train_loss = train_autoencoder(
-            model, train_loader, optimizer, logger, device, beta, gamma, criterion)
+            model, train_loader, optimizer, logger, device, beta, gamma, criterion, distribution)
 
         image_filename = pathJoin(image_directory, 'reconstructed_epoch_{}.png'.format(epoch))
 
         validation_top1_accuracy, validation_top5_accuracy, validation_loss = validate_autoencoder(
-            model, val_loader, logger, device, image_filename, beta, gamma, criterion, ((epoch % 10) == 0))
+            model, val_loader, logger, device, image_filename, beta, gamma, criterion, ((epoch % 10) == 0), distribution)
 
         logger.info('Epoch {}: Train: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(
             epoch, train_loss, train_top1_accuracy, train_top5_accuracy) \
