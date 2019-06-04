@@ -205,10 +205,9 @@ supported_models = {
     'vgg19_in_affine_single_tune_all': create_vgg19_in_affine_single_tune_all, # Single IN with Affine
     'vgg19_in_sm_all_tune_all': create_vgg19_in_sm_all_tune_all, # IN-SM
     # similarity
-    'vgg19_vanilla_similarity_0.04_tune_all': create_vgg19_vanilla_similarity_tune_all,
-    'vgg19_in_single_similarity_0.04_tune_all': create_vgg19_in_single_similarity_tune_all,
-    'vgg19_bn_all_similarity_tune_fc': create_vgg19_bn_all_similarity_tune_fc,
-    'vgg19_bn_all_similarity_tune_all': create_vgg19_bn_all_similarity_tune_all,
+    'similarity_vgg19_vanilla_tune_all': create_vgg19_vanilla_similarity_tune_all,
+    'similarity_vgg19_in_single_tune_all': create_vgg19_in_single_similarity_tune_all,
+    'similarity_vgg19_bn_all_tune_fc': create_vgg19_bn_all_similarity_tune_fc,
     # latent representation
     'vae{}'.format(vae_model_name): create_betavae(config.zdim),
     'classifier_z{}'.format(vae_model_name): create_betavae_classifier(
