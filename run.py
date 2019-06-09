@@ -204,6 +204,7 @@ supported_models = {
     'vgg19_in_single_tune_all': create_vgg19_in_single_tune_all, # Single IN
     'vgg19_in_affine_single_tune_all': create_vgg19_in_affine_single_tune_all, # Single IN with Affine
     'vgg19_in_sm_all_tune_all': create_vgg19_in_sm_all_tune_all, # IN-SM
+    'vgg19_in_sm_single_tune_all': create_vgg19_in_sm_all_tune_all, # Single IN-SM
     # similarity
     'similarity_vgg19_vanilla_tune_all': create_vgg19_vanilla_similarity_tune_all,
     'similarity_vgg19_in_single_tune_all': create_vgg19_in_single_similarity_tune_all,
@@ -220,7 +221,22 @@ supported_models = {
 selected_models = {}
 
 for model_name, model_constructor in supported_models.items():
-    selected_model_name = 'bilateral_{}'.format(model_name) if config.bilateral else model_name
+    selected_model_name = model_name
+    if config.dataset != 'nonstylized' and \
+        not (
+            model_name == 'vgg19_vanilla_tune_fc' or \
+            'vae' in model_name or \
+            'classifier' in model_name or \
+            'latent' in model_name
+        ):
+        continue
+    if config.bilateral:
+        selected_model_name = 'bilateral_{}'.format(model_name)
+        if 'similarity' in model_name or \
+            'vae' in model_name or \
+            'classifier' in model_name or \
+            'latent' in model_name:
+            continue
     selected_model_name = '{}_{}'.format(config.dataset, selected_model_name)
     selected_models[selected_model_name] = model_constructor
 
@@ -250,7 +266,7 @@ if config.train:
         logger.info('Model Name {}'.format(model_name))
         model = models[model_name]()
         if 'vae' in model_name:
-            target_type = model_name.split('_')[-1]
+            target_type = model_name.split('_')[0]
             _, pair_train_loader = load_pair_data(['stylized-imagenet200-0.0', 'stylized-imagenet200-1.0'],
                                         'train', target_type)
             _, pair_val_loader = load_pair_data(['stylized-imagenet200-0.0', 'stylized-imagenet200-1.0'],

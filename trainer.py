@@ -290,7 +290,7 @@ def validate_autoencoder(model, loader, logger, device, filename, beta, gamma, c
         total_kld, dim_wise_kld, mean_kld = calculate_kl_divergence(mu, logvar)
         effective_kl = beta * total_kld
         effective_classification_loss = gamma * classification_loss
-        batch_loss = reconstruction_loss + effective_kl
+        batch_loss = reconstruction_loss + effective_kl + effective_classification_loss
 
         logger.debug('Batch Loss: {}'.format(batch_loss.item()) \
             + ' Reconstruction Loss: {:.4f}'.format(reconstruction_loss.item()) \
@@ -314,7 +314,7 @@ def validate_autoencoder(model, loader, logger, device, filename, beta, gamma, c
             save_image(comparison.cpu(), filename, nrow=n, normalize=False)
 
         if (batch_index + 1) % 10 == 0:
-            logger.debug('Training Batch {}/{}: Loss {:.4f}'.format(batch_index + 1, len(loader), mean_loss) \
+            logger.debug('Validation Batch {}/{}: Loss {:.4f}'.format(batch_index + 1, len(loader), mean_loss) \
                 + ' Top1 Accuracy {:.4f} Top5 Accuracy {:.4f}'.format(top1_score, top5_score))
             if DEBUG:
                 break
@@ -350,7 +350,7 @@ def train_autoencoder(model, loader, optimizer, logger, device, beta, gamma, cri
         total_kld, dim_wise_kld, mean_kld = calculate_kl_divergence(mu, logvar)
         effective_kl = beta * total_kld
         effective_classification_loss = gamma * classification_loss
-        batch_loss = reconstruction_loss + effective_kl
+        batch_loss = reconstruction_loss + effective_kl + effective_classification_loss
 
         logger.debug('Batch Loss: {}'.format(batch_loss.item()) \
             + ' Reconstruction Loss: {:.4f}'.format(reconstruction_loss.item()) \

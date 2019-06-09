@@ -344,16 +344,6 @@ def create_vgg19_in_sm_single_tune_all():
     return vgg
 
 
-def create_vgg19_in_sm_eval():
-    vgg = VGG_IN(21, pretrained=True)
-
-    # freeze all layers
-    for param in vgg.parameters():
-        param.requires_grad = False
-
-    return vgg
-
-
 def create_vgg19_in_sm_all_tune_all():
     return create_vgg19_in_all_tune_all_root(instance_normalization_function=InstanceNormBatchSwap)
 

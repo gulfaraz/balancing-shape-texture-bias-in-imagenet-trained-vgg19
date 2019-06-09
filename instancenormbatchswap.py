@@ -10,6 +10,9 @@ class InstanceNormBatchSwap(torch.nn.Module):
     def forward(self, input):
         assert input.shape[1] == self.n_neurons, "Input has incorrect shape"
 
+        if not self.training:
+            return input
+
         temp = input.view(input.size(0), input.size(1), -1)
         mean = temp.mean(2, keepdim=True).unsqueeze(-1)
         std = temp.std(2, keepdim=True).unsqueeze(-1)
