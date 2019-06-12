@@ -5,6 +5,21 @@ from PIL import Image, ImageFilter
 import torch
 from torch.utils.data import Dataset
 
+DEBUG = False
+VAL_FILES_1 = ['ILSVRC2012_val_00000709.JPEG', 'ILSVRC2012_val_00001496.JPEG', 'ILSVRC2012_val_00002072.JPEG', 'ILSVRC2012_val_00004612.JPEG', 'ILSVRC2012_val_00004719.JPEG', 'ILSVRC2012_val_00005207.JPEG', 'ILSVRC2012_val_00005362.JPEG', 'ILSVRC2012_val_00007023.JPEG', 'ILSVRC2012_val_00008778.JPEG', 'ILSVRC2012_val_00009683.JPEG', 'ILSVRC2012_val_00010417.JPEG', 'ILSVRC2012_val_00010598.JPEG', 'ILSVRC2012_val_00011952.JPEG', 'ILSVRC2012_val_00013410.JPEG', 'ILSVRC2012_val_00013918.JPEG', 'ILSVRC2012_val_00014432.JPEG', 'ILSVRC2012_val_00014773.JPEG', 'ILSVRC2012_val_00016918.JPEG', 'ILSVRC2012_val_00019119.JPEG', 'ILSVRC2012_val_00021675.JPEG', 'ILSVRC2012_val_00022337.JPEG', 'ILSVRC2012_val_00023393.JPEG', 'ILSVRC2012_val_00023696.JPEG', 'ILSVRC2012_val_00023786.JPEG', 'ILSVRC2012_val_00023871.JPEG', 'ILSVRC2012_val_00023906.JPEG', 'ILSVRC2012_val_00024000.JPEG', 'ILSVRC2012_val_00025168.JPEG', 'ILSVRC2012_val_00026403.JPEG', 'ILSVRC2012_val_00026412.JPEG', 'ILSVRC2012_val_00027189.JPEG', 'ILSVRC2012_val_00027448.JPEG', 'ILSVRC2012_val_00028628.JPEG', 'ILSVRC2012_val_00028970.JPEG', 'ILSVRC2012_val_00029864.JPEG', 'ILSVRC2012_val_00031185.JPEG', 'ILSVRC2012_val_00032637.JPEG', 'ILSVRC2012_val_00033582.JPEG', 'ILSVRC2012_val_00037997.JPEG', 'ILSVRC2012_val_00038683.JPEG', 'ILSVRC2012_val_00038976.JPEG', 'ILSVRC2012_val_00040192.JPEG', 'ILSVRC2012_val_00040600.JPEG', 'ILSVRC2012_val_00041427.JPEG', 'ILSVRC2012_val_00041579.JPEG', 'ILSVRC2012_val_00042232.JPEG', 'ILSVRC2012_val_00044374.JPEG', 'ILSVRC2012_val_00046770.JPEG', 'ILSVRC2012_val_00046964.JPEG', 'ILSVRC2012_val_00049735.JPEG']
+VAL_FILES_2 = ['ILSVRC2012_val_00000473.JPEG', 'ILSVRC2012_val_00002112.JPEG', 'ILSVRC2012_val_00002556.JPEG', 'ILSVRC2012_val_00003992.JPEG', 'ILSVRC2012_val_00004416.JPEG', 'ILSVRC2012_val_00004853.JPEG', 'ILSVRC2012_val_00007618.JPEG', 'ILSVRC2012_val_00007645.JPEG', 'ILSVRC2012_val_00009568.JPEG', 'ILSVRC2012_val_00010131.JPEG', 'ILSVRC2012_val_00010440.JPEG', 'ILSVRC2012_val_00010458.JPEG', 'ILSVRC2012_val_00012789.JPEG', 'ILSVRC2012_val_00015989.JPEG', 'ILSVRC2012_val_00016525.JPEG', 'ILSVRC2012_val_00017567.JPEG', 'ILSVRC2012_val_00018520.JPEG', 'ILSVRC2012_val_00021834.JPEG', 'ILSVRC2012_val_00023896.JPEG', 'ILSVRC2012_val_00023931.JPEG', 'ILSVRC2012_val_00023936.JPEG', 'ILSVRC2012_val_00026659.JPEG', 'ILSVRC2012_val_00028684.JPEG', 'ILSVRC2012_val_00029513.JPEG', 'ILSVRC2012_val_00031522.JPEG', 'ILSVRC2012_val_00032026.JPEG', 'ILSVRC2012_val_00032929.JPEG', 'ILSVRC2012_val_00034096.JPEG', 'ILSVRC2012_val_00034487.JPEG', 'ILSVRC2012_val_00034956.JPEG', 'ILSVRC2012_val_00036326.JPEG', 'ILSVRC2012_val_00038147.JPEG', 'ILSVRC2012_val_00038171.JPEG', 'ILSVRC2012_val_00038252.JPEG', 'ILSVRC2012_val_00038499.JPEG', 'ILSVRC2012_val_00039860.JPEG', 'ILSVRC2012_val_00040260.JPEG', 'ILSVRC2012_val_00040398.JPEG', 'ILSVRC2012_val_00041667.JPEG', 'ILSVRC2012_val_00043400.JPEG', 'ILSVRC2012_val_00043691.JPEG', 'ILSVRC2012_val_00043864.JPEG', 'ILSVRC2012_val_00044147.JPEG', 'ILSVRC2012_val_00044263.JPEG', 'ILSVRC2012_val_00044757.JPEG', 'ILSVRC2012_val_00044794.JPEG', 'ILSVRC2012_val_00047066.JPEG', 'ILSVRC2012_val_00047181.JPEG', 'ILSVRC2012_val_00047971.JPEG', 'ILSVRC2012_val_00049267.JPEG']
+CLASS_NAME_1 = 'n02124075'
+CLASS_NAME_2 = 'n04067472'
+
+def selector(line, split):
+    if DEBUG:
+        if split == 'train':
+            return (CLASS_NAME_1 in line) or (CLASS_NAME_2 in line)
+        elif split == 'val':
+            return (line.strip() in VAL_FILES_1) or (line.strip() in VAL_FILES_2)
+    else:
+        return True
+
 class BaseDataset(Dataset):
 
     def __init__(self, directory, split='train', transforms=None):
@@ -61,7 +76,8 @@ class ImageNet200Dataset(BaseDataset):
         with open(dataset_file_list_path, 'r') as dataset_file_list_file:
             for line in tqdm(dataset_file_list_file, total=sum(1 for line in open(dataset_file_list_path))):
                 file_path = pathJoin(self.directory, self.sanitizeFilename(line))
-                datapoints.append(file_path)
+                if selector(line, self.split):
+                    datapoints.append(file_path)
         
         return datapoints
     
@@ -92,9 +108,10 @@ class ImageNet200Dataset(BaseDataset):
         with open(groundtruths_path, 'r') as groundtruths_file:
             for line in groundtruths_file:
                 groundtruth_breakdown = line.split(' ')
-                groundtruth_breakdown.pop(0)
-                groundtruth = ' '.join(groundtruth_breakdown).strip()
-                groundtruths.append(int(groundtruth))
+                filename = groundtruth_breakdown.pop(0)
+                if selector(filename, 'val'):
+                    groundtruth = ' '.join(groundtruth_breakdown).strip()
+                    groundtruths.append(int(groundtruth))
 
         return groundtruths
 
@@ -253,7 +270,8 @@ class ImageNet200PairDataset(BaseDataset):
             for line in tqdm(dataset_file_list_file, total=sum(1 for line in open(dataset_file_list_path))):
                 file_path = pathJoin(self.directory, self.sanitizeFilename(line))
                 target_file_path = pathJoin(self.target_directory, self.sanitizeFilename(line))
-                datapoints.append([file_path, target_file_path])
+                if selector(line, self.split):
+                    datapoints.append([file_path, target_file_path])
         
         return datapoints
     
@@ -284,9 +302,10 @@ class ImageNet200PairDataset(BaseDataset):
         with open(groundtruths_path, 'r') as groundtruths_file:
             for line in groundtruths_file:
                 groundtruth_breakdown = line.split(' ')
-                groundtruth_breakdown.pop(0)
-                groundtruth = ' '.join(groundtruth_breakdown).strip()
-                groundtruths.append(int(groundtruth))
+                filename = groundtruth_breakdown.pop(0)
+                if selector(filename, 'val'):
+                    groundtruth = ' '.join(groundtruth_breakdown).strip()
+                    groundtruths.append(int(groundtruth))
 
         return groundtruths
 
@@ -346,7 +365,8 @@ class CelebADataset(BaseDataset):
         return (input_filepath, input_image)
 
     def loadDataset(self):
-        return [ pathJoin(self.root_directory, filename) for filename in os.listdir(self.root_directory) ]
+        all_datapoints = [ pathJoin(self.root_directory, filename) for filename in os.listdir(self.root_directory) ]
+        return all_datapoints[:1000] if DEBUG else all_datapoints
 
 
 def find_normalization_values(dataset, image_index):

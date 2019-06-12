@@ -6,6 +6,12 @@ import numpy as np
 from score import *
 from utils import *
 from torchvision.utils import save_image
+from sklearn.manifold import TSNE
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+
+colors = cm.rainbow(np.linspace(0, 1, 200))
+np.random.shuffle(colors)
 
 DEBUG = False
 
@@ -28,7 +34,6 @@ def calculate_reconstruction_loss(x, x_recon, distribution):
     if distribution == 'bernoulli':
         recon_loss = bce_logit_loss(x_recon, x).div(batch_size)
     elif distribution == 'gaussian':
-        x_recon = sigmoid(x_recon)
         recon_loss = mse_loss(x_recon, x).div(batch_size)
     else:
         recon_loss = None
@@ -50,6 +55,41 @@ def calculate_kl_divergence(mu, logvar):
     mean_kld = klds.mean(1).mean(0, True)
 
     return total_kld, dimension_wise_kld, mean_kld
+
+
+# def calculate_reconstruction_loss(x, x_recon, distribution):
+#     batch_size = x.size(0)
+#     assert batch_size != 0
+#     sigmoid = torch.nn.Sigmoid()
+#     mse_loss = torch.nn.MSELoss(reduction='mean')
+#     bce_logit_loss = torch.nn.BCEWithLogitsLoss(reduction='mean')
+
+#     if distribution == 'bernoulli':
+#         recon_loss = bce_logit_loss(x_recon, x)#.div(batch_size)
+#     elif distribution == 'gaussian':
+#         recon_loss = mse_loss(x_recon, x)#.div(batch_size)
+#     else:
+#         recon_loss = None
+
+#     return recon_loss
+
+
+# def calculate_kl_divergence(mu, logvar):
+#     batch_size = mu.size(0)
+#     assert batch_size != 0
+#     if mu.data.ndimension() == 4:
+#         mu = mu.view(mu.size(0), mu.size(1))
+#     if logvar.data.ndimension() == 4:
+#         logvar = logvar.view(logvar.size(0), logvar.size(1))
+
+#     klds = -0.5*(1 + logvar - mu.pow(2) - logvar.exp())
+#     # total_kld = klds.sum(1).mean(0, True)
+#     total_kld = klds.mean(1).mean(0, True)
+#     dimension_wise_kld = klds.mean(0)
+#     # mean_kld = klds.mean(1).mean(0, True)
+#     mean_kld = klds.mean(1).mean(0, True)
+
+#     return total_kld, dimension_wise_kld, mean_kld
 
 # In[3]: Classifier
 
@@ -263,12 +303,22 @@ def run(model_name, model, model_directory, number_of_epochs, learning_rate, log
 
 # In[4]: Autoencoder
 
-def validate_autoencoder(model, loader, logger, device, filename, beta, gamma, criterion, save_reconstruction, distribution):
+def plot_manifold(all_mu, all_class, manifold_filename):
+    tsne = TSNE(n_components=2, perplexity=40, n_iter=300)
+    tsne_results = tsne.fit_transform(all_mu)
+    x = tsne_results[:, 0]
+    y = tsne_results[:, 1]
+    plt.scatter(x, y, color=[ colors[i] for i in all_class ])
+    plt.savefig(manifold_filename)
+
+def validate_autoencoder(model, loader, logger, device, reconstruction_grid_filename, manifold_filename, beta, gamma, criterion, save_reconstruction, distribution):
     logger.debug('Validation Start')
     model.eval()
 
     total_top1, total_top5, total_, top1_score, top5_score = 0, 0, 0, 0, 0
     loss = []
+    all_mu = []
+    all_class = []
 
     for batch_index, batch in enumerate(loader):
         batch_input = batch[loader.dataset.INDEX_IMAGE].to(device)
@@ -307,11 +357,15 @@ def validate_autoencoder(model, loader, logger, device, filename, beta, gamma, c
         top1_score = score_value(total_top1, total_)
         top5_score = score_value(total_top5, total_)
 
-        if batch_index == 0 and save_reconstruction:
-            n = min(batch_reconstruction_target.size(0), 8)
-            comparison = torch.cat([batch_reconstruction_target[:n],
-                batch_reconstruction.view(*batch_reconstruction_target.shape)[:n]])
-            save_image(comparison.cpu(), filename, nrow=n, normalize=False)
+        if save_reconstruction:
+            if batch_index == 0:
+                n = min(batch_reconstruction_target.size(0), 8)
+                comparison = torch.cat([batch_reconstruction_target[:n],
+                    batch_reconstruction.view(*batch_reconstruction_target.shape)[:n]])
+                save_image(comparison.cpu(), reconstruction_grid_filename, nrow=n, normalize=False)
+            
+            all_mu.append(mu)
+            all_class.append(batch_classification_target)
 
         if (batch_index + 1) % 10 == 0:
             logger.debug('Validation Batch {}/{}: Loss {:.4f}'.format(batch_index + 1, len(loader), mean_loss) \
@@ -319,6 +373,10 @@ def validate_autoencoder(model, loader, logger, device, filename, beta, gamma, c
             if DEBUG:
                 break
 
+    if save_reconstruction:
+        all_mu = torch.cat(all_mu, dim=0).detach().cpu().numpy()
+        all_class = torch.cat(all_class, dim=0).detach().cpu().numpy()
+        plot_manifold(all_mu, all_class, manifold_filename)
     logger.debug('Validation End')
     return top1_score, top5_score, mean_loss
 
@@ -416,14 +474,26 @@ def run_autoencoder(model_name, model, model_directory, number_of_epochs,
     criterion = torch.nn.CrossEntropyLoss()
     distribution = 'bernoulli' if 'highpass' in model_name else 'gaussian'
 
+    anneal_start = 30
+    anneal_width = number_of_epochs - anneal_start
+
+    max_beta = beta
+    min_beta = 0.0
+
+    current_beta = min_beta
+
     for epoch in range(last_epoch, number_of_epochs + 1):
         train_top1_accuracy, train_top5_accuracy, train_loss = train_autoencoder(
-            model, train_loader, optimizer, logger, device, beta, gamma, criterion, distribution)
+            model, train_loader, optimizer, logger, device, current_beta, gamma, criterion, distribution)
 
-        image_filename = pathJoin(image_directory, 'reconstructed_epoch_{}.png'.format(epoch))
+        reconstruction_grid_filename = pathJoin(image_directory, 'reconstructed_epoch_{}.png'.format(epoch))
+        manifold_filename = pathJoin(image_directory, 'manifold_epoch_{}.png'.format(epoch))
 
         validation_top1_accuracy, validation_top5_accuracy, validation_loss = validate_autoencoder(
-            model, val_loader, logger, device, image_filename, beta, gamma, criterion, ((epoch % 10) == 0), distribution)
+            model, val_loader, logger, device, reconstruction_grid_filename, manifold_filename, current_beta, gamma, criterion, ((epoch % 10) == 0), distribution)
+
+        if epoch > anneal_start:
+            current_beta += (max_beta - current_beta) / (anneal_width * 0.3)
 
         logger.info('Epoch {}: Train: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(
             epoch, train_loss, train_top1_accuracy, train_top5_accuracy) \
@@ -437,7 +507,7 @@ def run_autoencoder(model_name, model, model_directory, number_of_epochs,
                 sample_filename = pathJoin(image_directory, 'generated_epoch_{}.png'.format(epoch))
                 save_image(sample.view(64, 3, image_size, image_size), sample_filename, normalize=False)
 
-            explore_betavae(model_name, model, image_directory, epoch, val_loader, device)
+            # explore_betavae(model_name, model, image_directory, epoch, val_loader, device)
 
         logger.debug('Saving new weights')
         os.makedirs(model_directory, exist_ok=True)
