@@ -97,18 +97,16 @@ vae_transforms = transforms.Compose([
     transforms.ToTensor()
 ])
 
-convert_to_vae_transforms = transforms.Compose([
-    denormalize,
-    transforms.ToPILImage(),
-    transforms.Resize(VAE_IMAGE_SIZE),
-    transforms.ToTensor()
-])
-
 highpass_transforms = transforms.Compose([
     transforms.CenterCrop(IMAGE_SIZE),
     transforms.Grayscale(num_output_channels=3),
     transforms.ToTensor(),
-    lambda x: (x > 0.2).float()
+    transforms.Normalize(mean=[0.5, 0.5, 0.5],
+                        std=[0.225, 0.225, 0.225]),
+    lambda x: x>-1.5,
+    lambda x: x.float(),
+    transforms.Normalize(mean=[0.5, 0.5, 0.5],
+                        std=[0.225, 0.225, 0.225])
 ])
 
 def load_data(dataset_name, split, train_transforms=train_transforms, test_transforms=test_transforms):
@@ -118,7 +116,6 @@ def load_data(dataset_name, split, train_transforms=train_transforms, test_trans
     transforms = train_transforms if istrain else test_transforms
 
     dataset = ImageNet200Dataset(dataset_path, split=split, transforms=transforms)#raw_transforms)
-    # dataset = CelebADataset('./space/datasets/CelebA/img_align_celeba', transforms=transforms)
     loader = DataLoader(dataset, batch_size=config.batchSize, shuffle=istrain, num_workers=config.numberOfWorkers)
 
     print('{} dataset {} has {} datapoints in {} batches'.format(split, dataset_name, len(dataset), len(loader)))
@@ -133,7 +130,6 @@ def load_bilateral_data(dataset_name, split,
     transforms = train_transforms if istrain else test_transforms
 
     dataset = ImageNet200Dataset(dataset_path, split=split, transforms=transforms)#raw_transforms)
-    # dataset = CelebADataset('./space/datasets/CelebA/img_align_celeba', transforms=transforms)
     loader = DataLoader(dataset, batch_size=config.batchSize, shuffle=istrain, num_workers=config.numberOfWorkers)
 
     print('{} dataset {} has {} datapoints in {} batches'.format(split, dataset_name, len(dataset), len(loader)))
@@ -149,7 +145,6 @@ def load_pair_data(dataset_names, split, target_type):
 
     dataset = ImageNet200PairDataset(input_dataset_path, target_dataset_path, split=split,
         transforms=vae_transforms, target_type=target_type, target_transforms=target_transforms)
-    # dataset = CelebADataset('./space/datasets/CelebA/img_align_celeba', transforms=vae_transforms)
     loader = DataLoader(dataset, batch_size=config.batchSize, shuffle=istrain, num_workers=config.numberOfWorkers)
 
     print('{} dataset pair ({}, {}) has {} datapoints in {} batches'.format(split, dataset_names[0], dataset_names[1],
@@ -171,6 +166,10 @@ bilateral_original_val_dataset, bilateral_original_val_loader = load_data('image
 _, nonstylized_nonstylized_loader = load_pair_data(['stylized-imagenet200-0.0', 'stylized-imagenet200-1.0'],
                             'train', 'nonstylized')
 
+# celeba_dataset = CelebADataset('./space/datasets/CelebA/img_align_celeba', transforms=betavae_transforms)
+# celeba_loader = DataLoader(celeba_dataset, batch_size=config.batchSize, shuffle=True,
+#                         num_workers=config.numberOfWorkers, drop_last=True)
+
 for dataset, loader in [
     (original_train_dataset, original_train_loader),
     (original_val_dataset, original_val_loader),
@@ -191,15 +190,12 @@ dataset_names = [
 # models directory
 model_directory = pathJoin(config.rootPath, 'models')
 
-vae_model_name = '{}_beta{}_gamma{}'.format(config.zdim, config.beta, config.gamma)
-vae_checkpoint_model_name = 'vae{}'.format(vae_model_name)
-vae_checkpoint_model_name = 'bilateral_{}'.format(vae_checkpoint_model_name) if config.bilateral else vae_checkpoint_model_name
-vae_checkpoint_model_name = '{}_{}'.format(config.dataset, vae_checkpoint_model_name)
-vae_model_checkpoint_path = pathJoin(model_directory, '{}.ckpt'.format(vae_checkpoint_model_name))
 
 supported_models = {
     # baseline
     'vgg19_vanilla_tune_fc': create_vgg19_vanilla_tune_fc, # Vanilla (No Norm)
+    'vgg19_vanilla_tune_fc_confirm': create_vgg19_vanilla_tune_fc, # Vanilla (No Norm)
+    'vgg19_vanilla_tune_fc_confirm_again': create_vgg19_vanilla_tune_fc, # Vanilla (No Norm)
     # normalization
     'vgg19_bn_all_tune_fc': create_vgg19_bn_all_tune_fc, # Batch Norm
     'vgg19_bn_in_single_tune_all': create_vgg19_bn_in_single_tune_all, # Batch Norm with Single IN
@@ -207,43 +203,56 @@ supported_models = {
     'vgg19_in_single_tune_all': create_vgg19_in_single_tune_all, # Single IN
     'vgg19_in_affine_single_tune_all': create_vgg19_in_affine_single_tune_all, # Single IN with Affine
     'vgg19_in_sm_all_tune_all': create_vgg19_in_sm_all_tune_all, # IN-SM
-    'vgg19_in_sm_single_tune_all': create_vgg19_in_sm_all_tune_all, # Single IN-SM
+
+    'vgg19_bn_all_tune_fc_confirm': create_vgg19_bn_all_tune_fc, # Batch Norm
+    'vgg19_bn_in_single_tune_all_confirm': create_vgg19_bn_in_single_tune_all, # Batch Norm with Single IN
+    'vgg19_in_all_tune_all_confirm': create_vgg19_in_all_tune_all, # Instance Norm
+    'vgg19_in_single_tune_all_confirm': create_vgg19_in_single_tune_all, # Single IN
+    'vgg19_in_affine_single_tune_all_confirm': create_vgg19_in_affine_single_tune_all, # Single IN with Affine
+    'vgg19_in_sm_all_tune_all_confirm': create_vgg19_in_sm_all_tune_all, # IN-SM
+
+    'vgg19_bn_all_tune_fc_confirm_again': create_vgg19_bn_all_tune_fc, # Batch Norm
+    'vgg19_bn_in_single_tune_all_confirm_again': create_vgg19_bn_in_single_tune_all, # Batch Norm with Single IN
+    'vgg19_in_all_tune_all_confirm_again': create_vgg19_in_all_tune_all, # Instance Norm
+    'vgg19_in_single_tune_all_confirm_again': create_vgg19_in_single_tune_all, # Single IN
+    'vgg19_in_affine_single_tune_all_confirm_again': create_vgg19_in_affine_single_tune_all, # Single IN with Affine
+    'vgg19_in_sm_all_tune_all_confirm_again': create_vgg19_in_sm_all_tune_all, # IN-SM
     # similarity
-    'similarity_vgg19_vanilla_tune_all': create_vgg19_vanilla_similarity_tune_all,
-    'similarity_vgg19_in_single_tune_all': create_vgg19_in_single_similarity_tune_all,
-    'similarity_vgg19_bn_all_tune_fc': create_vgg19_bn_all_similarity_tune_fc,
+    'vgg19_vanilla_similarity_0.04_tune_all': create_vgg19_vanilla_similarity_tune_all,
+    'vgg19_in_single_similarity_0.04_tune_all': create_vgg19_in_single_similarity_tune_all,
+    'vgg19_bn_all_similarity_tune_fc': create_vgg19_bn_all_similarity_tune_fc,
+    'vgg19_bn_all_similarity_tune_all': create_vgg19_bn_all_similarity_tune_all,
+    # bilateral
+    'vgg19_vanilla_tune_fc_bilateral': create_vgg19_vanilla_tune_fc,
+    'vgg19_bn_all_tune_fc_bilateral': create_vgg19_bn_all_tune_fc,
+    'vgg19_bn_in_single_tune_all_bilateral': create_vgg19_bn_in_single_tune_all,
+    'vgg19_in_all_tune_all_bilateral': create_vgg19_in_all_tune_all,
+    'vgg19_in_single_tune_all_bilateral': create_vgg19_in_single_tune_all,
+    'vgg19_in_affine_single_tune_all_bilateral': create_vgg19_in_affine_single_tune_all,
+    'vgg19_in_sm_all_tune_all_bilateral': create_vgg19_in_sm_all_tune_all,
+
+    'vgg19_vanilla_tune_fc_bilateral_confirm': create_vgg19_vanilla_tune_fc,
+    'vgg19_bn_all_tune_fc_bilateral_confirm': create_vgg19_bn_all_tune_fc,
+    'vgg19_bn_in_single_tune_all_bilateral_confirm': create_vgg19_bn_in_single_tune_all,
+    'vgg19_in_all_tune_all_bilateral_confirm': create_vgg19_in_all_tune_all,
+    'vgg19_in_single_tune_all_bilateral_confirm': create_vgg19_in_single_tune_all,
+    'vgg19_in_affine_single_tune_all_bilateral_confirm': create_vgg19_in_affine_single_tune_all,
+    'vgg19_in_sm_all_tune_all_bilateral_confirm': create_vgg19_in_sm_all_tune_all,
+
+    'vgg19_vanilla_tune_fc_bilateral_confirm_again': create_vgg19_vanilla_tune_fc,
+    'vgg19_bn_all_tune_fc_bilateral_confirm_again': create_vgg19_bn_all_tune_fc,
+    'vgg19_bn_in_single_tune_all_bilateral_confirm_again': create_vgg19_bn_in_single_tune_all,
+    'vgg19_in_all_tune_all_bilateral_confirm_again': create_vgg19_in_all_tune_all,
+    'vgg19_in_single_tune_all_bilateral_confirm_again': create_vgg19_in_single_tune_all,
+    'vgg19_in_affine_single_tune_all_bilateral_confirm_again': create_vgg19_in_affine_single_tune_all,
+    'nonstylized_bilateral_vgg19_in_sm_all_tune_all_confirm_again': create_vgg19_in_sm_all_tune_all,
     # latent representation
-    'vae{}'.format(vae_model_name): create_betavae(config.zdim),
-    'classifier_z{}'.format(vae_model_name): create_betavae_classifier(
-        vae_model_checkpoint_path, config.zdim, config.device),
-    # train with latent
-    'latent_vgg19_in_single_tune_all': create_vgg19_in_single_tune_all_with_latent(
-        vae_model_checkpoint_path, config.zdim, config.device, convert_to_vae_transforms), # Single IN with Latent
+    'vae{}_beta{}_nonstylized'.format(config.zdim, config.beta): create_betavae(config.zdim),
+    # feature + latent
+    # 'vgg19_in_single_tune_all_vae_highpass': create_vgg19_vae_support(
+    #     'vgg19_in_single_tune_all', 'vgg19_variational_autoencoder_highpass',
+    #     model_directory, config.device),
 }
-
-selected_models = {}
-
-for model_name, model_constructor in supported_models.items():
-    selected_model_name = model_name
-    if config.dataset != 'nonstylized' and \
-        not (
-            model_name == 'vgg19_vanilla_tune_fc' or \
-            'vae' in model_name or \
-            'classifier' in model_name or \
-            'latent' in model_name
-        ):
-        continue
-    if config.bilateral:
-        selected_model_name = 'bilateral_{}'.format(model_name)
-        if 'similarity' in model_name or \
-            'vae' in model_name or \
-            'classifier' in model_name or \
-            'latent' in model_name:
-            continue
-    selected_model_name = '{}_{}'.format(config.dataset, selected_model_name)
-    selected_models[selected_model_name] = model_constructor
-
-supported_models = selected_models
 
 # In[5]: Sanity Check
 
@@ -264,12 +273,14 @@ if config.train:
     os.makedirs(log_directory, exist_ok=True)
 
     for model_name in models:
+
+        # original
         logger = create_logger(log_directory, model_name)
         logger.info(' '.join(sys.argv))
         logger.info('Model Name {}'.format(model_name))
         model = models[model_name]()
         if 'vae' in model_name:
-            target_type = model_name.split('_')[0]
+            target_type = model_name.split('_')[-1]
             _, pair_train_loader = load_pair_data(['stylized-imagenet200-0.0', 'stylized-imagenet200-1.0'],
                                         'train', target_type)
             _, pair_val_loader = load_pair_data(['stylized-imagenet200-0.0', 'stylized-imagenet200-1.0'],
@@ -285,37 +296,32 @@ if config.train:
                 pair_val_loader,
                 config.device,
                 config.beta,
-                config.vaeImageSize,
-                config.gamma,
-                load_data=load_data,
-                vae_transforms=convert_to_vae_transforms
+                config.vaeImageSize
             )
         else:
-            train_loader = original_train_loader
-            val_loader = original_val_loader
-            if 'bilateral' in model_name:
-                train_loader = bilateral_original_train_loader
-                val_loader = bilateral_original_val_loader
-            elif config.dataset == 'stylized':
-                train_loader = stylized_train_loader
-                val_loader = stylized_val_loader
             run(
                 model_name, model,
                 model_directory,
                 config.numberOfEpochs,
                 config.learningRate,
                 logger,
-                train_loader,
-                val_loader,
-                config.device,
+                bilateral_original_train_loader if 'bilateral' in model_name else original_train_loader,
+                bilateral_original_val_loader if 'bilateral' in model_name else original_val_loader, config.device,
                 similarity_weight=similarity_weight if 'similarity' in model_name else None,
                 load_data=load_data
             )
+
+        # # stylized
+        # model_name = 'stylized_{}'.format(model_name)
+        # logger = create_logger(log_directory, model_name)
+        # logger.info('Run Name {}'.format(model_name))
+        # model = models[model_name]()
+        # run(model_name, model, training, epochs, monitor, logger, stylized_train_loader, stylized_val_loader)
 
         del model
         torch.cuda.empty_cache()
 
 # In[6]: Check Performance
 
-perf(models, model_directory, dataset_names, config.device, load_data=load_data, load_bilateral_data=load_bilateral_data, only_exists=config.exists, vae_transforms=convert_to_vae_transforms)
+perf(models, model_directory, dataset_names, config.device, load_data=load_data, load_bilateral_data=load_bilateral_data, only_exists=config.exists)
 

@@ -83,7 +83,7 @@ class BetaVAE_H(nn.Module):
         logvar = distributions[:, self.z_dim:]
         z = reparametrize(mu, logvar)
         x_recon = self._decode(z)
-        y = self.classifier(z)
+        y = self.classifier(mu)
 
         if self.classification_mode:
             return y

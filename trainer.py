@@ -83,13 +83,11 @@ def calculate_kl_divergence(mu, logvar):
 #         logvar = logvar.view(logvar.size(0), logvar.size(1))
 
 #     klds = -0.5*(1 + logvar - mu.pow(2) - logvar.exp())
-#     # total_kld = klds.sum(1).mean(0, True)
-#     total_kld = klds.mean(1).mean(0, True)
+#     total_kld = klds.sum(1).mean(0, True)
 #     dimension_wise_kld = klds.mean(0)
-#     # mean_kld = klds.mean(1).mean(0, True)
 #     mean_kld = klds.mean(1).mean(0, True)
 
-#     return total_kld, dimension_wise_kld, mean_kld
+#     return mean_kld, dimension_wise_kld, total_kld
 
 # In[3]: Classifier
 
@@ -308,8 +306,9 @@ def plot_manifold(all_mu, all_class, manifold_filename):
     tsne_results = tsne.fit_transform(all_mu)
     x = tsne_results[:, 0]
     y = tsne_results[:, 1]
+    plt.clf()
     plt.scatter(x, y, color=[ colors[i] for i in all_class ])
-    plt.savefig(manifold_filename)
+    plt.savefig(manifold_filename, bbox_inches='tight')
 
 def validate_autoencoder(model, loader, logger, device, reconstruction_grid_filename, manifold_filename, beta, gamma, criterion, save_reconstruction, distribution):
     logger.debug('Validation Start')
@@ -444,7 +443,7 @@ def train_autoencoder(model, loader, optimizer, logger, device, beta, gamma, cri
 def run_autoencoder(model_name, model, model_directory, number_of_epochs,
     learning_rate, logger, train_loader, val_loader, device, beta, image_size,
     gamma, image_directory=pathJoin('betavaeresults'), load_data=None,
-    dataset_names=['stylized-imagenet200-0.0', 'stylized-imagenet200-1.0']):
+    dataset_names=['stylized-imagenet200-0.0', 'stylized-imagenet200-1.0'], vae_transforms=None):
     checkpoint_path = pathJoin(model_directory, '{}.ckpt'.format(model_name))
     print(checkpoint_path)
 
@@ -526,7 +525,7 @@ def run_autoencoder(model_name, model, model_directory, number_of_epochs,
 
     logger.info('Epoch {}'.format(checkpoint['epoch']))
 
-    evaluate_model(model_name, model, load_data, dataset_names, logger.info, False, device)
+    evaluate_model(model_name, model, load_data, dataset_names, logger.info, False, device, vae_transforms)
     logger.info('Train: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(
         checkpoint['train_loss'], checkpoint['train_top1_accuracy'], checkpoint['train_top5_accuracy']))
     logger.info('Validation: Loss: {:.4f} Top1 Accuracy: {:.4f} Top5 Accuracy: {:.4f}'.format(
@@ -551,7 +550,7 @@ def sanity(model_list, loader, pair_loader, device):
         torch.cuda.empty_cache()
 
 
-def perf(model_list, model_directory, dataset_names, device, load_data=None, load_bilateral_data=None, only_exists=None):
+def perf(model_list, model_directory, dataset_names, device, load_data=None, load_bilateral_data=None, only_exists=None, vae_transforms=None):
     for model_name in model_list:
         print(model_name)
         model = model_list[model_name]()
@@ -577,8 +576,9 @@ def perf(model_list, model_directory, dataset_names, device, load_data=None, loa
                     train_loss, train_top1_accuracy, train_top5_accuracy))
 
             if not only_exists:
-                evaluate_model(model_name, model, load_data, dataset_names, print, 'similarity' in model_name, device)
-                evaluate_model(model_name + '_eval_on_bilateral_images', model, load_bilateral_data, dataset_names, print, 'similarity' in model_name, device)
+                eval_transforms = vae_transforms if 'vae' in model_name else None
+                evaluate_model(model_name, model, load_data, dataset_names, print, 'similarity' in model_name, device, eval_transforms)
+                evaluate_model(model_name + '_eval_on_bilateral_images', model, load_bilateral_data, dataset_names, print, 'similarity' in model_name, device, eval_transforms)
         else:
             print('Checkpoint not available for model {}'.format(model_name))
         del model

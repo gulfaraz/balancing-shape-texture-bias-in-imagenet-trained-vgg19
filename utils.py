@@ -43,6 +43,12 @@ def cuda(tensor, uses_cuda):
     return tensor.cuda() if uses_cuda else tensor
 
 
+def convert_input(transforms):    
+    def converter(x):
+        return torch.stack([ transforms(_) for _ in x.cpu() ], dim=0).cuda()
+    return converter
+
+
 def grid2gif(image_str, output_gif, delay=100):
     """Make GIF from images.
 

@@ -1,6 +1,7 @@
 import datetime
 import torch
 from tqdm import tqdm
+from utils import convert_input
 
 
 def score(prediction, target):
@@ -19,15 +20,20 @@ def score_value(score, total):
         return 0
 
 
-def score_model(model, dataloader, device, similarity_model=False):
+def score_model(model, dataloader, device, similarity_model=False, vae_transforms=None):
     model.eval()
     total_top1 = 0
     total_top5 = 0
     total_ = 0
+
+    transform = convert_input(vae_transforms)
+
     with torch.no_grad():
         for batch in tqdm(dataloader):
             target = batch[dataloader.dataset.INDEX_TARGET].to(device)
             input = batch[dataloader.dataset.INDEX_IMAGE].to(device)
+            if vae_transforms:
+                input = transform(input)
             if similarity_model:
                 output, _ = model(input)
             else:
@@ -40,7 +46,7 @@ def score_model(model, dataloader, device, similarity_model=False):
     return total_top1/total_, total_top5/total_
 
 
-def evaluate_model(model_name, model, load_data, dataset_names, print_function, similarity_model, device):
+def evaluate_model(model_name, model, load_data, dataset_names, print_function, similarity_model, device, vae_transforms):
 
     model.eval()
     if hasattr(model, 'set_classification_mode') and callable(getattr(model, 'set_classification_mode')):
@@ -53,7 +59,7 @@ def evaluate_model(model_name, model, load_data, dataset_names, print_function, 
 
     for dataset_name in dataset_names:
         _, loader = load_data(dataset_name, split='val')
-        top1, top5 = score_model(model, loader, device, similarity_model)
+        top1, top5 = score_model(model, loader, device, similarity_model, vae_transforms)
         print_function('{}: Top1: {:.4f} Top5: {:.4f}'.format(dataset_name, top1, top5))
         scores['top5'].append(top5)
         scores['top1'].append(top1)

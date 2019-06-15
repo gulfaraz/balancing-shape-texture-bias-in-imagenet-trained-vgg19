@@ -2,7 +2,7 @@ import torch
 import torchvision
 import torchvision.models as models
 from instancenormbatchswap import InstanceNormBatchSwap, InstanceNormSimilarity
-from utils import init_weights, pathJoin
+from utils import init_weights, pathJoin, convert_input
 import os
 from betavae import BetaVAE_H
 
@@ -454,7 +454,7 @@ class VGG_IN_VAE(torch.nn.Module):
         self.get_features = self.create_feature_extractor(classification_model)
         self.get_latents = self.create_latent_extractor(autoencoder_model)
         self.classifier = create_imagenet200_classifier(self.feature_dim + self.z_dim)
-        self.vae_transforms = vae_transforms
+        self.convert_input = convert_input(vae_transforms)
 
     def forward(self, x):
         with torch.no_grad():
@@ -482,9 +482,6 @@ class VGG_IN_VAE(torch.nn.Module):
                 encoded_x = encoded_x[:, :self.z_dim] # take the mean
             return encoded_x
         return latent_extractor
-    
-    def convert_input(self, x):
-        return torch.stack([ self.vae_transforms(_) for _ in x.cpu() ], dim=0).cuda()
 
 def create_feature_latent_classifier(classification_modelname, autoencoder_modelname, z_dim, model_directory, device, vae_transforms):
     def assemble_model():
