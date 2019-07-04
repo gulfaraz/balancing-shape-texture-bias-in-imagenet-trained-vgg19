@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy import signal
-from plotgrid import PlotGrid
 from tqdm import tqdm
 
 from utils import *
