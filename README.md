@@ -33,7 +33,7 @@ To train **Single IN** model on non-stylized ImageNet200,
 
 `python run.py --model nonstylized_vgg19_in_single_tune_all --train`
 
-To train **Vanilla** model on non-stylized ImageNet200 with bilateral filter,
+To train Vanilla model on non-stylized ImageNet200 with **bilateral filter**,
 
 `python run.py --model nonstylized_bilateral_vgg19_vanilla_tune_fc --bilateral --train`
 
@@ -41,7 +41,7 @@ To train **VAE** model with stylized target,
 
 `python run.py --model stylized_vae1024_beta0.2_gamma50.0 --numberOfEpochs 100 --zdim 1024 --beta 0.2 --gamma 50.0 --batchSize 32 --inputSize 128 --vaeImageSize 128 --dataset stylized --train`
 
-To train **Single IN** model with stylized latent representation as auxiliary signal,
+To train Single IN model with stylized **latent representation as auxiliary signal**,
 
 `python run.py --model stylized_latent_vgg19_in_single_tune_all --zdim 1024 --beta 0.2 --gamma 50.0 --batchSize 32 --dataset stylized --train`
 

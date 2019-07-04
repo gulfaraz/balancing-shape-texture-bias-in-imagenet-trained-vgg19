@@ -1,6 +1,6 @@
-# Verification of texture bias
+# Verifying texture bias in ResNet-50
 
-Testing results of [ImageNet-trained CNNs are biased towards texture; increasing shape bias improves accuracy and robustness](https://openreview.net/forum?id=Bygh9j09KX)
+Testing results of [ImageNet-trained CNNs are biased towards texture; increasing shape bias improves accuracy and robustness](https://openreview.net/forum?id=Bygh9j09KX).
 
 Accuracy of **results are as reported** with a reasonable margin of error.
 
