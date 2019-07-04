@@ -6,7 +6,6 @@ This repository holds code used to run experiments for my [2019 Masters A.I. the
 
 [Presentation is publicly available on Google Drive.](https://docs.google.com/presentation/d/1acGki6BS219MIwn5HYOvX3zifaY5q9uybvtGzztxxAE/edit?usp=sharing)
 
----
 ## Requirements
 [Anaconda](https://www.anaconda.com/distribution/#download-section)
 
@@ -16,7 +15,6 @@ Then create a conda environment with [torchenv.yml](./torchenv.yml) using,
 
 `torchenv` conda environment should have the required packages to run the experiments.
 
----
 ## Dataset
 
 **ImageNet200** - a subset of [ImageNet](http://image-net.org/download) was used to train and validate the models.
@@ -25,7 +23,6 @@ Use the `.txt` files in [ImageNet200 folder](./ImageNet200) to create the datase
 
 Use [Stylized-ImageNet](https://github.com/rgeirhos/Stylized-ImageNet) to create the necessary stylized datasets.
 
----
 ## Model Training
 
 To train **Vanilla** model on non-stylized ImageNet200,
@@ -48,7 +45,6 @@ To train **Single IN** model with stylized latent representation as auxiliary si
 
 `python run.py --model stylized_latent_vgg19_in_single_tune_all --zdim 1024 --beta 0.2 --gamma 50.0 --batchSize 32 --dataset stylized --train`
 
----
 ## Model Evaluation
 
 Run the same commands as training without the `train` flag.
@@ -57,7 +53,6 @@ To test **Vanilla** model,
 
 `python run.py --model nonstylized_vgg19_vanilla_tune_fc`
 
----
 ## Command Line Arguments
 
 ```
